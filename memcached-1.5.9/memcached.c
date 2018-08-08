@@ -1452,7 +1452,7 @@ static void complete_incr_bin(conn *c) {
             snprintf(tmpbuf, INCR_MAX_STORAGE_LEN, "%llu",
                 (unsigned long long)req->message.body.initial);
             int res = strlen(tmpbuf);
-            it = item_alloc(key, nkey, 0, realtime(req->message.body.expiration),
+            it = item_alloc(key, nkey, 0, 0, realtime(req->message.body.expiration),
                             res + 2);
 
             if (it != NULL) {
@@ -2058,7 +2058,7 @@ static void process_bin_sasl_auth(conn *c) {
     char *key = binary_get_key(c);
     assert(key);
 
-    item *it = item_alloc(key, nkey, 0, 0, vlen+2);
+    item *it = item_alloc(key, nkey, 0, 0, 0, vlen+2);
 
     /* Can't use a chunked item for SASL authentication. */
     if (it == 0 || (it->it_flags & ITEM_CHUNKED)) {
@@ -2427,7 +2427,7 @@ static void process_bin_update(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, req->message.body.flags,
+    it = item_alloc(key, nkey, req->message.body.cost, req->message.body.flags,
             realtime(req->message.body.expiration), vlen+2);
 
     if (it == 0) {
@@ -2509,7 +2509,7 @@ static void process_bin_append_prepend(conn *c) {
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, 0, 0, vlen+2);
+    it = item_alloc(key, nkey, 0, 0, 0, vlen+2);
 
     if (it == 0) {
         if (! item_size_ok(nkey, 0, vlen + 2)) {
@@ -2810,6 +2810,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
     if (old_it != NULL && comm == NREAD_ADD) {
         /* add only adds a nonexistent item, but promote to head of LRU */
+    	it_update_priority(old_it);
         do_item_update(old_it);
     } else if (!old_it && (comm == NREAD_REPLACE
         || comm == NREAD_APPEND || comm == NREAD_PREPEND))
@@ -2876,7 +2877,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
                 /* we have it and old_it here - alloc memory to hold both */
                 /* flags was already lost - so recover them from ITEM_suffix(it) */
                 FLAGS_CONV(settings.inline_ascii_response, old_it, flags);
-                new_it = do_item_alloc(key, it->nkey, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
+                new_it = do_item_alloc(key, it->nkey, it->cost, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
 
                 /* copy data from it and old_it to new_it */
                 if (new_it == NULL || _store_item_copy_data(comm, old_it, new_it, it) == -1) {
@@ -2893,9 +2894,14 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
         if (stored == NOT_STORED && failed_alloc == 0) {
             if (old_it != NULL) {
+
+            	//replace I think - vasco
+            	it_update_priority(it);
                 STORAGE_delete(c->thread->storage, old_it);
                 item_replace(old_it, it, hv);
             } else {
+            	//insert for the first time - vasco
+            	it_new_priority(it);
                 do_item_link(it, hv);
             }
 
@@ -2904,6 +2910,8 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             stored = STORED;
         }
     }
+
+    fprintf(stderr,"%f",it->priority);
 
     if (old_it != NULL)
         do_item_remove(old_it);         /* release our reference */
@@ -3990,7 +3998,7 @@ stop:
 static void process_update_command(conn *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
     char *key;
     size_t nkey;
-    int32_t cost;
+    unsigned int cost;
     unsigned int flags;
     int32_t exptime_int = 0;
     time_t exptime;
@@ -4010,7 +4018,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
 
-    if (! (safe_strtol(tokens[2].value, &cost)
+    if (! (safe_strtoul(tokens[2].value, (uint32_t *)&cost)
     	   &&(safe_strtoul(tokens[3].value, (uint32_t *)&flags)
            && safe_strtol(tokens[4].value, &exptime_int)
            && safe_strtol(tokens[5].value, (int32_t *)&vlen)))) {
@@ -4045,7 +4053,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_set(key, nkey);
     }
 
-    it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
+    it = item_alloc(key, nkey, cost, flags, realtime(exptime), vlen);
 
     if (it == 0) {
         enum store_item_type status;
@@ -4263,7 +4271,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         item *new_it;
         uint32_t flags;
         FLAGS_CONV(settings.inline_ascii_response, it, flags);
-        new_it = do_item_alloc(ITEM_key(it), it->nkey, flags, it->exptime, res + 2);
+        new_it = do_item_alloc(ITEM_key(it), it->nkey, it->cost, flags, it->exptime, res + 2);
         if (new_it == 0) {
             do_item_remove(it);
             return EOM;
@@ -5025,6 +5033,7 @@ static int try_read_command(conn *c) {
             return 0;
         }
         cont = el + 1;
+       // fprintf(stderr,"%d ,%d , %d",(int) el, (int) c->rcurr, (int)(el - c->rcurr));
         if ((el - c->rcurr) > 1 && *(el - 1) == '\r') {
             el--;
         }

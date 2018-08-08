@@ -543,10 +543,10 @@ void sidethread_conn_close(conn *c) {
 /*
  * Allocates a new item.
  */
-item *item_alloc(char *key, size_t nkey, int flags, rel_time_t exptime, int nbytes) {
+item *item_alloc(char *key, size_t nkey, int cost, int flags, rel_time_t exptime, int nbytes) {
     item *it;
     /* do_item_alloc handles its own locks */
-    it = do_item_alloc(key, nkey, flags, exptime, nbytes);
+    it = do_item_alloc(key, nkey, cost, flags, exptime, nbytes);
     return it;
 }
 

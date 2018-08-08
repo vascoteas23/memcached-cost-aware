@@ -13,6 +13,20 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
 /** Call only during init. Pre-allocates all available memory */
 void slabs_prefill_global(void);
 
+/** Function to give a priority to new items **/
+void it_new_priority(item *it);
+
+/** Function to update a priority to items in LRU **/
+void it_update_priority(item *it);
+
+/** Function to atribute the new mininum priority of a slabclass **/
+void minimum_priority_slclass(int id, double priority);
+
+int is_slc_full(int id);
+
+/** function that return the minimum value of a certain slabclass **/
+int return_minimum_priority_slclass(int id);
+
 /**
  * Given object size, return id to use when allocating/freeing memory for object
  * 0 means error: can't store such a large object

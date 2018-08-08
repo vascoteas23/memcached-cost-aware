@@ -274,6 +274,7 @@ extern "C"
             struct {
                 uint32_t flags;
                 uint32_t expiration;
+                uint32_t cost;
             } body;
         } message;
         uint8_t bytes[sizeof(protocol_binary_request_header) + 8];
