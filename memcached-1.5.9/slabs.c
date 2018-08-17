@@ -373,9 +373,9 @@ static void *do_slabs_alloc(const size_t size, unsigned int id,
 		it->it_flags &= ~ITEM_SLABBED; //duvida
 		it->refcount = 1;
 		p->sl_curr--;
-		it->hot = 0;
+//		it->hot = 0;
 		if ((int) do_get_lru_size(id) <= 32) {
-			it->hot = 1;
+//			it->hot = 1;
 			p->isfull = 0;
 		}
 		ret = (void *) it;

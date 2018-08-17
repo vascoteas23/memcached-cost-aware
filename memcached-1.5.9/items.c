@@ -398,44 +398,78 @@ static void do_item_link_q(item *it) { /* item is the new head */
 	assert((it->it_flags & ITEM_SLABBED) == 0);
 	bool higherit = (it->priority > return_minimum_priority_slclass(it->slabs_clsid));
 
+	int inhot = (int) sizes[it->slabs_clsid] <= 32 ? 1 : 0;
+
 	head_h = &heads_h[it->slabs_clsid];
 	head = &heads[it->slabs_clsid];
 	tail = &tails[it->slabs_clsid];
 	tail_h = &tails_h[it->slabs_clsid];
-	if ((it->hot == 1 && is_slc_full(it->slabs_clsid) == 0) || (higherit && is_slc_full(it->slabs_clsid) == 1)) {
+	if ((inhot == 1 && is_slc_full(it->slabs_clsid) == 0) || (higherit && is_slc_full(it->slabs_clsid) == 1)) {
+//	if(true){
 		it->prev = 0;
 		it->next = *head_h;
 		if (it->next) {
 			it->next->prev = it;
+//			fprintf(stderr,"Aqui");
+//			fprintf(stderr, " tail_h->prev:  %s \n", ITEM_key(*tail_h));
 		}
 		*head_h = it;
-//		fprintf(stderr,"referencce: %d\n",(it->nsuffix));
-		if (*tail == 0)
+		if (*tail_h == 0)
 			*tail_h = it;
-		if (*head != 0) {
+//		if (*head != 0 && sizes[it->slabs_clsid] > 32) {
+		if (*head != 0 && inhot == 0) {
+//		if(sizes[it->slabs_clsid] >= 32){
 			item *** new_it;
 			new_it = &tail_h;
-			(**new_it)->prev = 0;
-			(**new_it)->next = *head;
-			(*head)->prev = **new_it;
-			*head = **new_it;
+//			(**new_it)->prev = 0;
+			(*tail_h)->next = *head;
+//			fprintf(stderr, " tail_h->prev: %s tail_h: %s \n", ITEM_key((*tail_h)->prev), ITEM_key(*tail_h));
+			if((*head)) {
+				if ((*head)->next) {
+					(*head)->next->prev = *head;
+
+				}
+//				(*head)->next = *head;
+				(*head)->prev = *tail_h;
+
+
+			}
+
+			*head = *tail_h;
+//			(*head)->next = *head;
 			*tail_h = (*tail_h)->prev;
+//			fprintf(stderr, " tail_h: %s, tail_h->prev: %s, tail_h->next: %s, head: %s, head->prev: %s \n" , ITEM_key(*tail_h),ITEM_key((*tail_h)->prev), ITEM_key((*tail_h)->next), ITEM_key(*head),ITEM_key((*head)->prev));
+//			if(sizes[it->slabs_clsid] > 32) fprintf(stderr," head->next. %s \n",ITEM_key((*head)->next));
 
 		}
-		fprintf(stderr, "Counter: %d, Hot: %d, Priority: %f, Minpriority: %d, References: it->prev %p, it %p, it->next %p ", sizes[it->slabs_clsid], it->hot, it->priority, return_minimum_priority_slclass(it->slabs_clsid),(void*) &it->prev, (void*) &it, (void*) &it->next);
+//		if(sizes[it->slabs_clsid] != 0){
+//		fprintf(stderr, "Counter: %d, Hot: %d, Priority: %f, Minpriority: %d, References: head_h: %s it->next->prev %s, it %s, it->next %s ", sizes[it->slabs_clsid], it->hot, it->priority, return_minimum_priority_slclass(it->slabs_clsid), ITEM_key(*head_h), ITEM_key(it->next->prev), ITEM_key(it), ITEM_key(it->next));
+//		}else{
+//			fprintf(stderr, "Counter 0, going to be tail: %s ", ITEM_key(it));
+//		}
 		sizes[it->slabs_clsid]++;
+//		fprintf(stderr,"if 1, size of LRU %d, HOT %d ",sizes[it->slabs_clsid], it->hot);
 		return;
 	} else {
 		assert(*tail_h != 0);
 		assert(it != *head);
 		assert((*head && *tail) || (*head == 0 && *tail == 0));
-		it->prev = 0;
+//		fprintf(stderr, "tail_H: %s", ITEM_key(*tail_h));
+		it->prev = *tail_h;
 		it->next = *head;
 		if (it->next)
 			it->next->prev = it;
 		*head = it;
 		if (*tail == 0)
 			*tail = it;
+//		if(sizes[it->slabs_clsid] > 33 ){
+//			fprintf(stderr,"%d 1 \n",sizes[it->slabs_clsid]);
+//				fprintf(stderr, "Counter: %d, Hot: %d, Priority: %f, Minpriority: %d, References: head_h: %s it->next->prev %s, it %s, it->next %s ", sizes[it->slabs_clsid], it->hot, it->priority, return_minimum_priority_slclass(it->slabs_clsid), ITEM_key(*head_h), ITEM_key(it->next->prev), ITEM_key(it), ITEM_key(it->next));
+//				}else{
+//					fprintf(stderr,"%d 2 %d \n",sizes[it->slabs_clsid], it->hot);
+//					fprintf(stderr, "Counter: %d, Hot: %d, Priority: %f, Minpriority: %d, References: head_h: %s , it  %s, it->prev %s ", sizes[it->slabs_clsid], it->hot, it->priority, return_minimum_priority_slclass(it->slabs_clsid), ITEM_key(*head_h), ITEM_key(it), ITEM_key(it->prev));
+//				}
+
 		sizes[it->slabs_clsid]++;
 #ifdef EXTSTORE
 		if (it->it_flags & ITEM_HDR) {
@@ -446,7 +480,7 @@ static void do_item_link_q(item *it) { /* item is the new head */
 #else
 		sizes_bytes[it->slabs_clsid] += ITEM_ntotal(it);
 #endif
-
+//		fprintf(stderr,"if 2, size of LRU %d, HOT %d ",sizes[it->slabs_clsid], it->hot);
 		return;
 	}
 }
@@ -585,28 +619,31 @@ void do_item_update_nolock(item *it) {
 /* Bump the last accessed time, or relink if we're in compat mode */
 void do_item_update(item *it) {
 	MEMCACHED_ITEM_UPDATE(ITEM_key(it), it->nkey, it->nbytes);
-
 	/* Hits to COLD_LRU immediately move to WARM. */
 	if (settings.lru_segmented) {
 		assert((it->it_flags & ITEM_SLABBED) == 0);
 		if ((it->it_flags & ITEM_LINKED) != 0) {
 			if (ITEM_lruid(it) == COLD_LRU && (it->it_flags & ITEM_ACTIVE)) {
 				it->time = current_time;
+				fprintf(stderr,"before && %d \n", it->slabs_clsid);
 				item_unlink_q(it);
 				it->slabs_clsid = ITEM_clsid(it);
 				it->slabs_clsid |= WARM_LRU;
 				it->it_flags &= ~ITEM_ACTIVE;
+				fprintf(stderr,"warm && %d \n", it->slabs_clsid);
 				item_link_q_warm(it);
 			} else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
 				it->time = current_time;
+				fprintf(stderr,"aqui 1");
 			}
 		}
 	} else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
 		assert((it->it_flags & ITEM_SLABBED) == 0);
-
+		fprintf(stderr,"aqui 2");
 		if ((it->it_flags & ITEM_LINKED) != 0) {
 			it->time = current_time;
 			item_unlink_q(it);
+			fprintf(stderr,"hot");
 			item_link_q(it);
 		}
 	}
@@ -1071,6 +1108,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv,
 						} else {
 							it->it_flags |= ITEM_ACTIVE;
 							if (ITEM_lruid(it) != COLD_LRU) {
+								fprintf(stderr,"WALA3");
 								do_item_update(it); // bump LA time
 							} else if (!lru_bump_async(c->thread->lru_bump_buf,
 									it, hv)) {
@@ -1080,6 +1118,7 @@ item *do_item_get(const char *key, const size_t nkey, const uint32_t hv,
 						}
 					}
 				} else {
+					fprintf(stderr,"WALA2");
 					it->it_flags |= ITEM_FETCHED;
 					do_item_update(it);
 				}

@@ -2810,11 +2810,13 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
     if (old_it != NULL && comm == NREAD_ADD) {
         /* add only adds a nonexistent item, but promote to head of LRU */
+    	fprintf(stderr,"ADDS and %d \n", comm);
     	it_update_priority(old_it);
         do_item_update(old_it);
     } else if (!old_it && (comm == NREAD_REPLACE
         || comm == NREAD_APPEND || comm == NREAD_PREPEND))
     {
+    	fprintf(stderr,"REPLACE and %d \n", comm);
         /* replace only replaces an existing value; don't store */
     } else if (comm == NREAD_CAS) {
         /* validate cas operation */
@@ -2894,12 +2896,13 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
         if (stored == NOT_STORED && failed_alloc == 0) {
             if (old_it != NULL) {
-
+            	fprintf(stderr,"REPLACE I WAS RIGHT \n");
             	//replace I think - vasco
             	it_update_priority(it);
                 STORAGE_delete(c->thread->storage, old_it);
                 item_replace(old_it, it, hv);
             } else {
+            	fprintf(stderr,"INSERT and %d \n", comm);
             	//insert for the first time - vasco
             	it_new_priority(it);
                 do_item_link(it, hv);
@@ -2911,7 +2914,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
         }
     }
 
-    fprintf(stderr,"%f",it->priority);
+
 
     if (old_it != NULL)
         do_item_remove(old_it);         /* release our reference */
@@ -2923,6 +2926,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
     }
     LOGGER_LOG(c->thread->l, LOG_MUTATIONS, LOGGER_ITEM_STORE, NULL,
             stored, comm, ITEM_key(it), it->nkey, it->exptime, ITEM_clsid(it));
+
 
     return stored;
 }
