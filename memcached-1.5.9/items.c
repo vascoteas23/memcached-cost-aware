@@ -276,6 +276,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					}
 
 			}
+		} else{
+			break;
 		}
 	}
 
