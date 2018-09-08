@@ -2804,7 +2804,6 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
     char *key = ITEM_key(it);
     item *old_it = do_item_get(key, it->nkey, hv, c, DONT_UPDATE);
     enum store_item_type stored = NOT_STORED;
-
     item *new_it = NULL;
     uint32_t flags;
 
@@ -2904,7 +2903,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             } else {
             	fprintf(stderr,"INSERT and %d \n", comm);
             	//insert for the first time - vasco
-            	it_new_priority(it);
+//            	it_new_priority(it);
                 do_item_link(it, hv);
             }
 
@@ -4021,7 +4020,6 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
 
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
-
     if (! (safe_strtoul(tokens[2].value, (uint32_t *)&cost)
     	   &&(safe_strtoul(tokens[3].value, (uint32_t *)&flags)
            && safe_strtol(tokens[4].value, &exptime_int)

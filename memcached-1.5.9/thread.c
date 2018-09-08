@@ -644,7 +644,7 @@ enum delta_result_type add_delta(conn *c, const char *key,
 enum store_item_type store_item(item *item, int comm, conn* c) {
     enum store_item_type ret;
     uint32_t hv;
-
+    fprintf(stderr,"KEY store_item: %s",ITEM_key(item));
     hv = hash(ITEM_key(item), item->nkey);
     item_lock(hv);
     ret = do_store_item(item, comm, c, hv);

@@ -1,4 +1,5 @@
-#define HOT_LRU 0
+#define HOT_LRU_R 0
+#define HOT_LRU_L 32
 #define WARM_LRU 64
 #define COLD_LRU 128
 #define TEMP_LRU 192

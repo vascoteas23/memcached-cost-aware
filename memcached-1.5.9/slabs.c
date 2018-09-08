@@ -811,12 +811,12 @@ static int slab_rebalance_start(void) {
 	return 0;
 }
 
-void it_new_priority(item *it) {
+void it_new_priority(item *it, int cost, int size) {
 
 	it->priority = ((double) (slabclass[it->slabs_clsid].inflation)
-			+ ((double) it->cost / (double) it->nbytes));
+			+ ((double) cost / (double) size));
 
-//	fprintf(stderr,"%f, %u, %u, %d",it->priority, slabclass[it->slabs_clsid].inflation, it->cost, it->nbytes);
+	fprintf(stderr,"priority: %f, inflation: %u, cost: %u, size of data: %d",it->priority, slabclass[it->slabs_clsid].inflation, it->cost, it->nbytes);
 
 }
 
@@ -833,10 +833,11 @@ void it_update_priority(item *it) {
 void minimum_priority_slclass(int id, double priority) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
-	s_cls->minpriority = priority;
+	if(s_cls->minpriority > priority || s_cls->minpriority == 0)
+		s_cls->minpriority = priority;
 }
 
-int return_minimum_priority_slclass(int id) {
+double return_minimum_priority_slclass(int id) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
 	return s_cls->minpriority;
