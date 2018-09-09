@@ -655,7 +655,7 @@ enum crawler_result_type lru_crawler_crawl(char *slabs, const enum crawler_run_t
                 return CRAWLER_BADCLASS;
             }
             tocrawl[sid | TEMP_LRU] = 1;
-            tocrawl[sid | HOT_LRU_L] = 1;
+            tocrawl[sid | HOT_LRU_R] = 1;
             tocrawl[sid | WARM_LRU] = 1;
             tocrawl[sid | COLD_LRU] = 1;
         }

@@ -1,5 +1,5 @@
-#define HOT_LRU_R 0
-#define HOT_LRU_L 32
+#define HOT_LRU_L 0
+#define HOT_LRU_R 32
 #define WARM_LRU 64
 #define COLD_LRU 128
 #define TEMP_LRU 192
@@ -14,6 +14,8 @@ uint64_t get_cas_id(void);
 item *do_item_alloc(char *key, const size_t nkey, const unsigned int cost, const unsigned int flags, const rel_time_t exptime, const int nbytes);
 item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain);
 item *do_item_alloc_pull(const size_t ntotal, const unsigned int id);
+item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
+		const double priority, const int flag);
 void item_free(item *it);
 bool item_size_ok(const size_t nkey, const int flags, const int nbytes);
 

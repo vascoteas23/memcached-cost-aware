@@ -210,7 +210,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
 			if (lru_pull_tail(id, COLD_LRU, total_bytes, LRU_PULL_EVICT, 0,
 			NULL) <= 0) {
 				if (settings.lru_segmented) {
-					lru_pull_tail(id, HOT_LRU_L, total_bytes, 0, 0, NULL);
+					lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0, NULL);
 				} else {
 					break;
 				}
@@ -256,7 +256,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				if (lru_pull_tail(id, HOT_LRU_R, total_bytes, LRU_PULL_EVICT, 0,
 				NULL) <= 0) {
 					if (settings.lru_segmented) {
-						lru_pull_tail(id, HOT_LRU_L, total_bytes, 0, 0, NULL);
+						lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0, NULL);
 					} else {
 						break;
 					}
@@ -266,7 +266,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			}else {
 				if (lru_pull_tail(id, COLD_LRU, total_bytes, LRU_PULL_EVICT,0,NULL) <= 0) {
 						if (settings.lru_segmented) {
-							lru_pull_tail(id, HOT_LRU_L, total_bytes, 0, 0,
+							lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0,
 							NULL);
 						} else {
 							break;
@@ -394,13 +394,13 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
 					sizes[id], id, it->priority,
 					return_minimum_priority_slclass(id));
-			id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
+			id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 		} else if (settings.lru_segmented
 				&& (it->priority < return_minimum_priority_slclass(id)
 						|| sizes[id] > 31)) {
 			fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id,
 					sizes[id], return_minimum_priority_slclass(id));
-			id |= HOT_LRU_L;
+			id |= HOT_LRU_R;
 		} else {
 			/* There is only COLD in compat-mode */
 			id |= COLD_LRU;
@@ -747,7 +747,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			item_stats_automove *cur = &am[n];
 
 			// outofmemory records into HOT
-			int i = n | HOT_LRU_L;
+			int i = n | HOT_LRU_R;
 			pthread_mutex_lock(&lru_locks[i]);
 			cur->outofmemory = itemstats[i].outofmemory;
 			pthread_mutex_unlock(&lru_locks[i]);
@@ -862,7 +862,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				lru_size_map[x] = sizes[i];
 				if (lru_type_map[x] == COLD_LRU && tails[i] != NULL) {
 					age = current_time - tails[i]->time;
-				} else if (lru_type_map[x] == HOT_LRU_L && tails[i] != NULL) {
+				} else if (lru_type_map[x] == HOT_LRU_R && tails[i] != NULL) {
 					age_hot = current_time - tails[i]->time;
 				} else if (lru_type_map[x] == WARM_LRU && tails[i] != NULL) {
 					age_warm = current_time - tails[i]->time;
@@ -870,7 +870,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				if (lru_type_map[x] == COLD_LRU)
 					totals.evicted_time = itemstats[i].evicted_time;
 				switch (lru_type_map[x]) {
-				case HOT_LRU_L:
+				case HOT_LRU_R:
 					totals.hits_to_hot = thread_stats.lru_hits[i];
 					break;
 				case WARM_LRU:
@@ -1262,7 +1262,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					int cold_tries = 5;
 					item *cold_search;
 					item *cold_next_it;
-					void *cold_hold_lock = NULL;
+//					void *cold_hold_lock = NULL;
 					cold_id |= COLD_LRU;
 //				LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);STORAGE_delete(ext_storage, search);
 //				do_item_unlink_nolock(search, hv);
@@ -1309,6 +1309,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						removed++;
 						break;
 					}
+					pthread_mutex_unlock(&lru_locks[cold_id]);
 				}
 				break;
 			case HOT_LRU_R:
@@ -1566,7 +1567,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		/* Juggle HOT/WARM up to N times */
 		for (i = 0; i < 500; i++) {
 			int do_more = 0;
-			if (lru_pull_tail(slabs_clsid, HOT_LRU_L, total_bytes,
+			if (lru_pull_tail(slabs_clsid, HOT_LRU_R, total_bytes,
 			LRU_PULL_CRAWL_BLOCKS, hot_age, NULL)
 					|| lru_pull_tail(slabs_clsid, WARM_LRU, total_bytes,
 					LRU_PULL_CRAWL_BLOCKS, warm_age, NULL)) {
@@ -1646,7 +1647,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 
 				next_crawls[i] = current_time + next_crawl_wait[i] + 5;
 				switch (GET_LRU(i)) {
-				case HOT_LRU_L:
+				case HOT_LRU_R:
 					lru_name = "hot";
 					break;
 				case WARM_LRU:
