@@ -252,7 +252,8 @@ static void settings_init(void) {
     settings.lru_crawler_tocrawl = 0;
     settings.lru_maintainer_thread = false;
     settings.lru_segmented = true;
-    settings.hot_lru_pct = 20;
+    settings.hot_lru_pct_l = 10;
+    settings.hot_lru_pct = 10;
     settings.warm_lru_pct = 40;
     settings.hot_max_factor = 0.2;
     settings.warm_max_factor = 2.0;
@@ -2810,7 +2811,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
     if (old_it != NULL && comm == NREAD_ADD) {
         /* add only adds a nonexistent item, but promote to head of LRU */
     	fprintf(stderr,"ADDS and %d \n", comm);
-    	it_update_priority(old_it);
+//    	it_update_priority(old_it);
         do_item_update(old_it);
     } else if (!old_it && (comm == NREAD_REPLACE
         || comm == NREAD_APPEND || comm == NREAD_PREPEND))
@@ -2897,7 +2898,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             if (old_it != NULL) {
             	fprintf(stderr,"REPLACE I WAS RIGHT \n");
             	//replace I think - vasco
-            	it_update_priority(it);
+//            	it_update_priority(it);
                 STORAGE_delete(c->thread->storage, old_it);
                 item_replace(old_it, it, hv);
             } else {
@@ -3832,6 +3833,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
             if (it) {
+            	LOGGER_LOG(NULL, LOG_MISSES, LOGGER_GET_MISSES, it);
                 if (_ascii_get_expand_ilist(c, i) != 0) {
                     item_remove(it);
                     goto stop;
@@ -3926,6 +3928,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                     c->thread->stats.touch_cmds++;
                     c->thread->stats.slab_stats[ITEM_clsid(it)].touch_hits++;
                 } else {
+                	LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, it);
                     c->thread->stats.lru_hits[it->slabs_clsid]++;
                     c->thread->stats.get_cmds++;
                 }
@@ -4027,7 +4030,6 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         out_string(c, "CLIENT_ERROR bad command line format this 2");
         return;
     }
-
     /* Ubuntu 8.04 breaks when I pass exptime to safe_strtol */
     exptime = exptime_int;
 
@@ -4442,7 +4444,9 @@ static void process_watch_command(conn *c, token_t *tokens, const size_t ntokens
                 f |= LOG_MUTATIONS;
             } else if ((strcmp(tokens[x].value, "sysevents") == 0)) {
                 f |= LOG_SYSEVENTS;
-            } else {
+            } else if((strcmp(tokens[x].value, "misses") == 0)) {
+            	f |= LOG_MISSES;
+            }else {
                 out_string(c, "ERROR");
                 return;
             }

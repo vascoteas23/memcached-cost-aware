@@ -20,6 +20,7 @@ enum log_entry_type {
     LOGGER_ITEM_STORE,
     LOGGER_CRAWLER_STATUS,
     LOGGER_SLAB_MOVE,
+	LOGGER_GET_MISSES,
 #ifdef EXTSTORE
     LOGGER_EXTSTORE_WRITE,
     LOGGER_COMPACT_START,
@@ -36,6 +37,7 @@ enum log_entry_subtype {
     LOGGER_EVICTION_ENTRY,
     LOGGER_ITEM_GET_ENTRY,
     LOGGER_ITEM_STORE_ENTRY,
+	LOGGER_GET_MISSES_ENTRY,
 #ifdef EXTSTORE
     LOGGER_EXT_WRITE_ENTRY,
 #endif
@@ -67,6 +69,7 @@ struct logentry_eviction {
     uint16_t it_flags;
     uint8_t nkey;
     uint8_t clsid;
+    unsigned int cost;
     char key[];
 };
 #ifdef EXTSTORE
@@ -119,6 +122,7 @@ typedef struct _logentry {
 #define LOG_EVICTIONS  (1<<6) /* details of evicted items */
 #define LOG_STRICT     (1<<7) /* block worker instead of drop */
 #define LOG_RAWCMDS    (1<<9) /* raw ascii commands */
+#define LOG_MISSES     (1<<10) /* MISSES*/
 
 typedef struct _logger {
     struct _logger *prev;

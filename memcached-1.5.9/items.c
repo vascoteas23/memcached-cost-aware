@@ -44,6 +44,7 @@ typedef struct {
 	uint64_t lrutail_reflocked;
 	uint64_t moves_to_cold;
 	uint64_t moves_to_warm;
+	uint64_t inHot;
 	uint64_t moves_within_lru;
 	uint64_t direct_reclaims;
 	uint64_t hits_to_hot;
@@ -231,6 +232,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
 
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		const double priority, const int flag) {
+	assert(flag <= 32);
 	item *it = NULL;
 	int i;
 	/* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -251,32 +253,43 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			total_bytes -= temp_lru_size(id);
 
 		if (it == NULL) {
+			fprintf(stderr,"flag : %d, id : %d, priority: %f, min: %f \n", flag, id, priority,return_minimum_priority_slclass(id | HOT_LRU_L));
 			//checks if the item has bigger priority than the minimum of the HOT_LRU_R and if the HOT_LRU_R is full
-			if (priority > return_minimum_priority_slclass(id) && flag && id < HOT_LRU_L) {
-				if (lru_pull_tail(id, HOT_LRU_R, total_bytes, LRU_PULL_EVICT, 0,
+			if (priority > return_minimum_priority_slclass(id | HOT_LRU_L)) {
+				fprintf(stderr,"lkZkT, priority: %f, min: %f id: %d sizeH: %d\n", priority,return_minimum_priority_slclass(id | HOT_LRU_L), (id | HOT_LRU_L), sizes[id | HOT_LRU_L]);
+				if (lru_pull_tail(id, HOT_LRU_L, total_bytes, LRU_PULL_EVICT, 0,
 				NULL) <= 0) {
+					fprintf(stderr,"POTS id: %d\n", id);
 					if (settings.lru_segmented) {
+						fprintf(stderr,"PITS id: %d\n",id);
 						lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0, NULL);
 					} else {
 						break;
 					}
-				}else{
-					break;
 				}
+//				else{
+//					fprintf(stderr,"POTIS3");
+//					break;
+//				}
 			}else {
+				fprintf(stderr,"afinal é aqui");
 				if (lru_pull_tail(id, COLD_LRU, total_bytes, LRU_PULL_EVICT,0,NULL) <= 0) {
+					fprintf(stderr,"afinal é WARM");
 						if (settings.lru_segmented) {
 							lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0,
 							NULL);
 						} else {
 							break;
 						}
-					} else{
-						break;
 					}
+//				else{
+//						fprintf(stderr,"POTIS");
+//						break;
+//					}
 
 			}
 		} else{
+			fprintf(stderr,"POTIS2");
 			break;
 		}
 	}
@@ -328,6 +341,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		uint8_t nsuffix;
 		item *it = NULL;
 		char suffix[40];
+		double priority;
 //	bool memfull = false;
 		// Avoid potential underflows.
 		if (nbytes < 2)
@@ -343,7 +357,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		unsigned int hdr_id = 0;
 		if (id == 0)
 			return 0;
-
+		priority = return_it_priority(id, cost, nbytes);
 		/* This is a large item. Allocate a header object now, lazily allocate
 		 *  chunks while reading the upload.
 		 */
@@ -357,16 +371,17 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				htotal += sizeof(uint64_t);
 			}
 			hdr_id = slabs_clsid(htotal);
-			it = do_item_alloc_pull(htotal, hdr_id);
+			it = do_item_alloc_pull_priority(htotal, hdr_id, priority, ((int) sizes[id | HOT_LRU_L]));
 			/* setting ITEM_CHUNKED is fine here because we aren't LINKED yet. */
 			if (it != NULL)
 				it->it_flags |= ITEM_CHUNKED;
 		} else {
-			it = do_item_alloc_pull(ntotal, id);
+			it = do_item_alloc_pull_priority(ntotal, id, priority, ((int) sizes[id | HOT_LRU_L]));
 		}
 
 		if (it == NULL) {
 			pthread_mutex_lock(&lru_locks[id]);
+			fprintf(stderr,"OUTZ");
 			itemstats[id].outofmemory++;
 			pthread_mutex_unlock(&lru_locks[id]);
 			return NULL;
@@ -383,25 +398,57 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		/* Items are initially loaded into the HOT_LRU. This is '0' but I want at
 		 * least a note here. Compiler (hopefully?) optimizes this out.
 		 */
-		if (settings.temp_lru
-				&& exptime - current_time <= settings.temporary_ttl) {
-			id |= TEMP_LRU;
-		} else if (settings.lru_segmented
-				&& (it->priority > return_minimum_priority_slclass(id)
-						|| sizes[id] < 32)) {
-			minimum_priority_slclass(id, it->priority);
+	if (settings.temp_lru && exptime - current_time <= settings.temporary_ttl) {
+		id |= TEMP_LRU;
+	} else if (settings.lru_segmented
+			&& (it->priority > return_minimum_priority_slclass(id | HOT_LRU_L))) {
+		fprintf(stderr, "LAYER1 \n");
+		if (return_minimum_priority_slclass(id | HOT_LRU_L) == 0) {
+			fprintf(stderr, "LAYER2 \n");
+			if (sizes[id | HOT_LRU_L] < 32) {
+				assert(
+						sizes[id | HOT_LRU_L] < 32 && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+				fprintf(stderr, "LAYER3 \n");
+				id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
+				fprintf(stderr,
+						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+						sizes[id], id, it->priority,
+						return_minimum_priority_slclass(id | HOT_LRU_L));
+			} else {
+				fprintf(stderr, "LAYER4 \n");
+				assert(
+						sizes[id | HOT_LRU_L] >= 32 && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
+				fprintf(stderr,
+						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+						sizes[id], id, it->priority,
+						return_minimum_priority_slclass(id | HOT_LRU_L));
+			}
+		} else {
+//			if(sizes[id | HOT_LRU_L] <= 32){
+			fprintf(stderr, "LAYER5 \n");
+			id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 			fprintf(stderr,
 					"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
 					sizes[id], id, it->priority,
-					return_minimum_priority_slclass(id));
-			id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
-		} else if (settings.lru_segmented
-				&& (it->priority < return_minimum_priority_slclass(id)
-						|| sizes[id] > 31)) {
-			fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id,
-					sizes[id], return_minimum_priority_slclass(id));
-			id |= HOT_LRU_R;
-		} else {
+					return_minimum_priority_slclass(id | HOT_LRU_L));
+//			}else{
+//				fprintf(stderr, "LAYER5 \n");
+//				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
+//				fprintf(stderr,
+//						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+//						sizes[id], id, it->priority,
+//						return_minimum_priority_slclass(id | HOT_LRU_L));
+//			}
+		}
+
+	} else if (settings.lru_segmented
+			&& (it->priority < return_minimum_priority_slclass(id | HOT_LRU_L))) {
+
+		id |= HOT_LRU_R;
+		fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id, sizes[id],
+				return_minimum_priority_slclass(id | HOT_LRU_L));
+	} else {
 			/* There is only COLD in compat-mode */
 			id |= COLD_LRU;
 		}
@@ -478,7 +525,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	static void do_item_link_q(item *it) { /* item is the new head */
 		item **head, **tail;
 		assert((it->it_flags & ITEM_SLABBED) == 0);
-
+		fprintf(stderr,"class: %d, sizej: %d",it->slabs_clsid, sizes[it->slabs_clsid]);
 		head = &heads[it->slabs_clsid];
 		tail = &tails[it->slabs_clsid];
 		assert(it != *head);
@@ -538,7 +585,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		if (it->prev)
 			it->prev->next = it->next;
 		sizes[it->slabs_clsid]--;
-#ifdef EXTSTORE
+		#ifdef EXTSTORE
 		if (it->it_flags & ITEM_HDR) {
 			sizes_bytes[it->slabs_clsid] -= (ITEM_ntotal(it) - it->nbytes) + sizeof(item_hdr);
 		} else {
@@ -607,6 +654,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			assoc_delete(ITEM_key(it), it->nkey, hv);
 			do_item_unlink_q(it);
 			do_item_remove(it);
+			fprintf(stderr,"REMOVEDDD");
 		}
 	}
 
@@ -642,6 +690,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		if (settings.lru_segmented) {
 			assert((it->it_flags & ITEM_SLABBED) == 0);
 			if ((it->it_flags & ITEM_LINKED) != 0) {
+				//mudar aqui para ir para HOTPRIORITY_Q
 				if (ITEM_lruid(it) == COLD_LRU
 						&& (it->it_flags & ITEM_ACTIVE)) {
 					it->time = current_time;
@@ -664,7 +713,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			if ((it->it_flags & ITEM_LINKED) != 0) {
 				it->time = current_time;
 				item_unlink_q(it);
-				fprintf(stderr, "hot");
 				item_link_q(it);
 			}
 		}
@@ -769,6 +817,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		itemstats_t totals;
 		memset(&totals, 0, sizeof(itemstats_t));
 		int n;
+		for(int l = 0; l < LARGEST_ID; l++){
+			fprintf(stderr, "ALL sizes id: %d and size %d\n",l,sizes[l]);
+		}
 		for (n = 0; n < MAX_NUMBER_OF_SLAB_CLASSES; n++) {
 			int x;
 			int i;
@@ -786,6 +837,10 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
 				totals.moves_to_cold += itemstats[i].moves_to_cold;
 				totals.moves_to_warm += itemstats[i].moves_to_warm;
+//				if(i >= HOT_LRU_L && i < WARM_LRU && sizes[i] != 0){
+//					fprintf(stderr, "HOT: %d\n",sizes[i]);
+//								}
+				totals.inHot += (i >= HOT_LRU_L && i < WARM_LRU) ? sizes[i] : 0;
 				totals.moves_within_lru += itemstats[i].moves_within_lru;
 				totals.direct_reclaims += itemstats[i].direct_reclaims;
 				pthread_mutex_unlock(&lru_locks[i]);
@@ -812,6 +867,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					(unsigned long long )totals.moves_to_cold);
 			APPEND_STAT("moves_to_warm", "%llu",
 					(unsigned long long )totals.moves_to_warm);
+			APPEND_STAT("inHot", "%llu",
+								(unsigned long long )totals.inHot);
 			APPEND_STAT("moves_within_lru", "%llu",
 					(unsigned long long )totals.moves_within_lru);
 			APPEND_STAT("direct_reclaims", "%llu",
@@ -856,6 +913,10 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				totals.lrutail_reflocked += itemstats[i].lrutail_reflocked;
 				totals.moves_to_cold += itemstats[i].moves_to_cold;
 				totals.moves_to_warm += itemstats[i].moves_to_warm;
+//				if(i >= HOT_LRU_L && i < WARM_LRU && sizes[i] != 0){
+//					fprintf(stderr, "%d\n",sizes[i]);
+//				}
+				totals.inHot += (i >= HOT_LRU_L && i < WARM_LRU) ? sizes[i] : 0;
 				totals.moves_within_lru += itemstats[i].moves_within_lru;
 				totals.direct_reclaims += itemstats[i].direct_reclaims;
 				size += sizes[i];
@@ -933,6 +994,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						(unsigned long long )totals.moves_to_cold);
 				APPEND_NUM_FMT_STAT(fmt, n, "moves_to_warm", "%llu",
 						(unsigned long long )totals.moves_to_warm);
+				APPEND_NUM_FMT_STAT(fmt, n, "inHot", "%llu",
+										(unsigned long long )totals.inHot);
 				APPEND_NUM_FMT_STAT(fmt, n, "moves_within_lru", "%llu",
 						(unsigned long long )totals.moves_within_lru);
 				APPEND_NUM_FMT_STAT(fmt, n, "direct_reclaims", "%llu",
@@ -1191,10 +1254,15 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		uint64_t limit = 0;
 
 		id |= cur_lru;
+
 		pthread_mutex_lock(&lru_locks[id]);
+
 		search = tails[id];
+//		if(search == NULL && stats.total_items > 0 && flags == LRU_PULL_CRAWL_BLOCKS)
+//			fprintf(stderr, "Its NULL\n");
 		/* We walk up *only* for locked items, and if bottom is expired. */
 		for (; tries > 0 && search != NULL; tries--, search = next_it) {
+
 			/* we might relink search mid-loop, so search->prev isn't reliable */
 			next_it = search->prev;
 			if (search->nbytes == 0 && search->nkey == 0
@@ -1207,6 +1275,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				tries++;
 				continue;
 			}
+
 			uint32_t hv = hash(ITEM_key(search), search->nkey);
 			/* Attempt to hash item lock the "search" item. If locked, no
 			 * other callers can incr the refcount. Also skip ourselves. */
@@ -1256,27 +1325,47 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			 */
 			switch (cur_lru) {
 			case HOT_LRU_L:
+//				limit = total_bytes * settings.hot_lru_pct_l / 100;
+				fprintf(stderr,"AQUI34\n");
+				fprintf(stderr,"sizez: %d, id: %d, new size: %d", sizes[orig_id | COLD_LRU], orig_id, (orig_id | COLD_LRU));
 				it = search; /* No matter what, we're stopping */
 				if (flags & LRU_PULL_EVICT) {
 					int cold_id = orig_id;
 					int cold_tries = 5;
 					item *cold_search;
 					item *cold_next_it;
+					int found = 0;
 //					void *cold_hold_lock = NULL;
+					fprintf(stderr,"ZLSYYY: %d", orig_id);
+					if(tails[((orig_id | COLD_LRU))]){
+						fprintf(stderr, "COLDBUJA\n");
 					cold_id |= COLD_LRU;
+					}
+//					else if(tails[(cold_id | WARM_LRU)]){
+//						fprintf(stderr, "WARMBUJA\n");
+//						cold_id |= WARM_LRU;
+//					}else{
+//						cold_id |= HOT_LRU_R;
+//					}
+//					fprintf(stderr, "ZZZZZZZZ \n");
+					assert(cold_id < LARGEST_ID);
 //				LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);STORAGE_delete(ext_storage, search);
 //				do_item_unlink_nolock(search, hv);
-					pthread_mutex_lock(&lru_locks[cold_id]);
-					cold_search = tails[cold_id];
+					pthread_mutex_lock(&lru_locks[orig_id | COLD_LRU]);
+					cold_search = tails[orig_id | COLD_LRU];
+
+					fprintf(stderr, "TEST, cold_id: %d, size_of_cold %d , realS: %llu\n", cold_id, sizes[orig_id+ HOT_LRU_L | COLD_LRU], itemstats[id].moves_to_cold);
 					for (; cold_tries > 0 && cold_search != NULL;
 							cold_tries--, cold_search = cold_next_it) {
+
 						/* we might relink search mid-loop, so search->prev isn't reliable */
 						cold_next_it = cold_search->prev;
+						found++;
 						if (cold_search->nbytes == 0 && cold_search->nkey == 0
 								&& cold_search->it_flags == 1) {
 							/* We are a crawler, ignore it. */
 							if (flags & LRU_PULL_CRAWL_BLOCKS) {
-								pthread_mutex_unlock(&lru_locks[cold_id]);
+								pthread_mutex_unlock(&lru_locks[orig_id | COLD_LRU]);
 								return 0;
 							}
 							tries++;
@@ -1286,31 +1375,55 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 							/* Don't think we need a counter for this. It'll OOM.  */
 							break;
 						}
-						itemstats[cold_id].evicted++;
-						itemstats[cold_id].evicted_time = current_time
+						itemstats[orig_id | COLD_LRU].evicted++;
+						itemstats[orig_id | COLD_LRU].evicted_time = current_time
 								- search->time;
 						if (cold_search->exptime != 0)
-							itemstats[cold_id].evicted_nonzero++;
+							itemstats[orig_id | COLD_LRU].evicted_nonzero++;
 						if ((cold_search->it_flags & ITEM_FETCHED) == 0) {
-							itemstats[cold_id].evicted_unfetched++;
+							itemstats[orig_id | COLD_LRU].evicted_unfetched++;
 						}
 						if ((cold_search->it_flags & ITEM_ACTIVE)) {
-							itemstats[cold_id].evicted_active++;
+							itemstats[orig_id | COLD_LRU].evicted_active++;
 						}
 						LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION,
 								cold_search);STORAGE_delete(ext_storage, cold_search);
-						uint32_t hv = hash(ITEM_key(cold_search), cold_search->nkey);
-						do_item_unlink_nolock(cold_search, hv);
 
-						itemstats[id].moves_to_warm++;
-						move_to_lru = WARM_LRU;
-						do_item_unlink_q(search);
-						it = search;
+						uint32_t hv = hash(ITEM_key(cold_search), cold_search->nkey);
+						fprintf(stderr, "TEST2");
+						sl_new_inflation(orig_id,cold_search->priority);
+						do_item_unlink_nolock(cold_search, hv);
 						removed++;
+						fprintf(stderr, "TEST3");
+						if (settings.slab_automove == 2) {
+						slabs_reassign(-1, orig_id);
+					}
+
 						break;
 					}
-					pthread_mutex_unlock(&lru_locks[cold_id]);
-				}
+//					pthread_mutex_unlock(&lru_locks[cold_id]);
+//					if(lru_pull_tail(orig_id, COLD_LRU, total_bytes, LRU_PULL_EVICT, 0,
+//					NULL) <= 0){
+////						lru_pull_tail(orig_id, H, total_bytes, LRU_PULL_EVICT, 0,
+////											NULL) <= 0){
+//					}else{
+//					assert(cold_search != NULL);
+					assert(id >=32);
+					if(sizes[id] >= 32 && found > 0){
+					itemstats[id].moves_to_warm++;
+					move_to_lru = WARM_LRU; // move to WARM
+					do_item_unlink_q(search);
+//					fprintf(stderr, "at least im here2 && and id %d\n", cold_search->slabs_clsid);
+					search->slabs_clsid = orig_id;
+					it = search;
+					fprintf(stderr, "idM: %d", it->slabs_clsid);
+					minimum_priority_slclass(id, it->priority);
+					}
+					pthread_mutex_unlock(&lru_locks[orig_id | COLD_LRU]);
+					break;
+					}
+
+
 				break;
 			case HOT_LRU_R:
 				limit = total_bytes * settings.hot_lru_pct / 100;
@@ -1336,9 +1449,12 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				} else if (sizes_bytes[id] > limit
 						|| current_time - search->time > max_age) {
 					itemstats[id].moves_to_cold++;
+					fprintf(stderr,"sizeT : %d, id: %d, idz: %d\n", sizes[orig_id], search->slabs_clsid,id);
 					move_to_lru = COLD_LRU;
 					do_item_unlink_q(search);
 					it = search;
+//					if(orig_id >= HOT_LRU_L && orig_id <= WARM_LRU)
+//							it->slabs_clsid = orig_id - HOT_LRU_L;
 					removed++;
 					break;
 				} else {
@@ -1347,6 +1463,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				}
 				break;
 			case COLD_LRU:
+//				fprintf(stderr,"vou para a cold\n");
 				it = search; /* No matter what, we're stopping */
 				if (flags & LRU_PULL_EVICT) {
 					if (settings.evict_to_free == 0) {
@@ -1364,7 +1481,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						itemstats[id].evicted_active++;
 					}
 					LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);STORAGE_delete(ext_storage, search);
+					sl_new_inflation(orig_id,it->priority);
 					do_item_unlink_nolock(search, hv);
+					fprintf(stderr,"idX %d",it->slabs_clsid);
 //                    assert(false);
 //				minimum_priority_slclass(it->slabs_clsid, it->priority); /** tells the slabclass that the priority of evicted item is the minimum**/
 					removed++;
@@ -1393,11 +1512,17 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		}
 
 		pthread_mutex_unlock(&lru_locks[id]);
-
+//		fprintf(stderr,"count %d", removed);
 		if (it != NULL) {
 			if (move_to_lru) {
+				if(flags & LRU_PULL_CRAWL_BLOCKS){
+				fprintf(stderr,"CRAWLING idC: %d\n",it->slabs_clsid);
+				}
+				fprintf(stderr,"idJ: %d\n",it->slabs_clsid );
 				it->slabs_clsid = ITEM_clsid(it);
+				fprintf(stderr,"idP: %d\n",it->slabs_clsid );
 				it->slabs_clsid |= move_to_lru;
+				fprintf(stderr,"moveTo: %d && id: %d\n", move_to_lru,it->slabs_clsid );
 				item_link_q(it);
 			}
 			if ((flags & LRU_PULL_RETURN_ITEM) == 0) {
@@ -1530,6 +1655,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	 * autoadjust in the future.
 	 */
 	static int lru_maintainer_juggle(const int slabs_clsid) {
+
 		int i;
 		int did_moves = 0;
 		uint64_t total_bytes = 0;
@@ -1563,7 +1689,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			hot_age = cold_age * settings.hot_max_factor;
 			warm_age = cold_age * settings.warm_max_factor;
 		}
-
 		/* Juggle HOT/WARM up to N times */
 		for (i = 0; i < 500; i++) {
 			int do_more = 0;
@@ -1576,6 +1701,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			if (settings.lru_segmented) {
 				do_more += lru_pull_tail(slabs_clsid, COLD_LRU, total_bytes,
 				LRU_PULL_CRAWL_BLOCKS, 0, NULL);
+
 			}
 			if (do_more == 0)
 				break;
@@ -1607,7 +1733,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		memset(todo, 0, sizeof(uint8_t) * POWER_LARGEST);
 		bool do_run = false;
 		unsigned int tocrawl_limit = 0;
-
 		// TODO: If not segmented LRU, skip non-cold
 		for (i = POWER_SMALLEST; i < POWER_LARGEST; i++) {
 			crawlerstats_t *s = &cdata->crawlerstats[i];
@@ -1750,7 +1875,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			/* A sleep of zero counts as a minimum of a 1ms wait */
 			last_sleep = to_sleep > 1000 ? to_sleep : 1000;
 			to_sleep = MAX_LRU_MAINTAINER_SLEEP;
-
 			STATS_LOCK();
 			stats.lru_maintainer_juggles++;
 			STATS_UNLOCK();
@@ -1767,6 +1891,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						to_sleep = next_juggles[i];
 					continue;
 				}
+				if(i>= HOT_LRU_L && i <= WARM_LRU)
+					continue;
 
 				int did_moves = lru_maintainer_juggle(i);
 #ifdef EXTSTORE
@@ -1900,7 +2026,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	/* Tail linkers and crawler for the LRU crawler. */
 	void do_item_linktail_q(item *it) { /* item is the new tail */
 		item **head, **tail;
-		assert(it->it_flags == 1);
+//		assert(it->it_flags == 1);
 		assert(it->nbytes == 0);
 
 		head = &heads[it->slabs_clsid];
@@ -1947,7 +2073,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	 * more clearly. */
 	item *do_item_crawl_q(item *it) {
 		item **head, **tail;
-		assert(it->it_flags == 1);
+//		assert(it->it_flags == 1);
 		assert(it->nbytes == 0);
 		head = &heads[it->slabs_clsid];
 		tail = &tails[it->slabs_clsid];

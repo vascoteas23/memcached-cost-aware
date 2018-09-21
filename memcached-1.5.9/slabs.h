@@ -22,11 +22,14 @@ void it_update_priority(item *it);
 /** Function to atribute the new mininum priority of a slabclass **/
 void minimum_priority_slclass(int id, double priority);
 
+/**function to update priority**/
+void sl_new_inflation(int id,double inf);
+
 int is_slc_full(int id);
 
 /** function that return the minimum value of a certain slabclass **/
 double return_minimum_priority_slclass(int id);
-
+double return_it_priority(int id, int cost, int size);
 /**
  * Given object size, return id to use when allocating/freeing memory for object
  * 0 means error: can't store such a large object

@@ -39,7 +39,7 @@ typedef struct {
 
 	size_t requested; /* The number of requested bytes */
 
-	unsigned int inflation; /* inflation value for priority of items in slabclasses */
+	double inflation; /* inflation value for priority of items in slabclasses */
 
 	int isfull; /* 1 if full 0 still has memory; */
 
@@ -374,10 +374,10 @@ static void *do_slabs_alloc(const size_t size, unsigned int id,
 		it->refcount = 1;
 		p->sl_curr--;
 //		it->hot = 0;
-		if ((int) do_get_lru_size(id) <= 32) {
+//		if ((int) do_get_lru_size(id) <= 32) {
 //			it->hot = 1;
-			p->isfull = 0;
-		}
+//			p->isfull = 0;
+//		}
 		ret = (void *) it;
 	} else {
 		ret = NULL;
@@ -450,7 +450,7 @@ static void do_slabs_free_chunked(item *it, const size_t size) {
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
 	slabclass_t *p;
 	item *it;
-
+	fprintf(stderr,"idT: %d, power_larges: %d", id,power_largest);
 	assert(id >= POWER_SMALLEST && id <= power_largest);
 	if (id < POWER_SMALLEST || id > power_largest)
 		return;
@@ -811,12 +811,18 @@ static int slab_rebalance_start(void) {
 	return 0;
 }
 
+double return_it_priority(int id, int cost, int size){
+
+	return ((double) (slabclass[id].inflation)
+			+ ((double) cost / (double) size));
+}
+
 void it_new_priority(item *it, int cost, int size) {
 
 	it->priority = ((double) (slabclass[it->slabs_clsid].inflation)
 			+ ((double) cost / (double) size));
 
-	fprintf(stderr,"priority: %f, inflation: %u, cost: %u, size of data: %d",it->priority, slabclass[it->slabs_clsid].inflation, it->cost, it->nbytes);
+	fprintf(stderr,"priority: %f, inflation: %f, cost: %u, size of data: %d",it->priority, slabclass[it->slabs_clsid].inflation, it->cost, it->nbytes);
 
 }
 
@@ -833,8 +839,23 @@ void it_update_priority(item *it) {
 void minimum_priority_slclass(int id, double priority) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
-	if(s_cls->minpriority > priority || s_cls->minpriority == 0)
+
+	if(s_cls->minpriority < priority){
+			s_cls->minpriority = priority;
+			return;
+	}
+	if(s_cls->minpriority == 0){
 		s_cls->minpriority = priority;
+		return;
+	}
+
+}
+
+void sl_new_inflation(int id,double inf){
+	slabclass_t *s_cls;
+		s_cls = &slabclass[id];
+		s_cls->inflation = inf;
+		fprintf(stderr,"id: %d, inf: %f, infz: %f",id,inf,s_cls->inflation);
 }
 
 double return_minimum_priority_slclass(int id) {

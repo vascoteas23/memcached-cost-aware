@@ -49,6 +49,7 @@ static const entry_details default_entries[] = {
     [LOGGER_EVICTION] = {LOGGER_EVICTION_ENTRY, 512, LOG_EVICTIONS, NULL},
     [LOGGER_ITEM_GET] = {LOGGER_ITEM_GET_ENTRY, 512, LOG_FETCHERS, NULL},
     [LOGGER_ITEM_STORE] = {LOGGER_ITEM_STORE_ENTRY, 512, LOG_MUTATIONS, NULL},
+	[LOGGER_GET_MISSES] = {LOGGER_GET_MISSES_ENTRY, 512, LOG_MISSES, NULL},
     [LOGGER_CRAWLER_STATUS] = {LOGGER_TEXT_ENTRY, 512, LOG_SYSEVENTS,
         "type=lru_crawler crawler=%d lru=%s low_mark=%llu next_reclaims=%llu since_run=%u next_run=%d elapsed=%u examined=%llu reclaimed=%llu"
     },
@@ -212,13 +213,28 @@ static int _logger_thread_parse_ee(logentry *e, char *scratch) {
     struct logentry_eviction *le = (struct logentry_eviction *) e->data;
     uriencode(le->key, keybuf, le->nkey, LOGGER_PARSE_SCRATCH);
     total = snprintf(scratch, LOGGER_PARSE_SCRATCH,
-            "ts=%d.%d gid=%llu type=eviction key=%s fetch=%s ttl=%lld la=%d clsid=%u\n",
+            "ts=%d.%d gid=%llu type=eviction key=%s fetch=%s ttl=%lld la=%d clsid=%u, cost=%u\n",
             (int)e->tv.tv_sec, (int)e->tv.tv_usec, (unsigned long long) e->gid,
             keybuf, (le->it_flags & ITEM_FETCHED) ? "yes" : "no",
-            (long long int)le->exptime, le->latime, le->clsid);
+            (long long int)le->exptime, le->latime, le->clsid,le->cost);
 
     return total;
 }
+
+static int _logger_thread_parse_gm(logentry *e, char *scratch) {
+    int total;
+    char keybuf[KEY_MAX_LENGTH * 3 + 1];
+    struct logentry_eviction *le = (struct logentry_eviction *) e->data;
+    uriencode(le->key, keybuf, le->nkey, LOGGER_PARSE_SCRATCH);
+    total = snprintf(scratch, LOGGER_PARSE_SCRATCH,
+            "ts=%d.%d gid=%llu type=eviction key=%s fetch=%s ttl=%lld la=%d clsid=%u, cost=%u\n",
+            (int)e->tv.tv_sec, (int)e->tv.tv_usec, (unsigned long long) e->gid,
+            keybuf, (le->it_flags & ITEM_FETCHED) ? "yes" : "no",
+            (long long int)le->exptime, le->latime, le->clsid,le->cost);
+
+    return total;
+}
+
 #ifdef EXTSTORE
 static int _logger_thread_parse_extw(logentry *e, char *scratch) {
     int total;
@@ -259,6 +275,8 @@ static enum logger_parse_entry_ret logger_thread_parse_entry(logentry *e, struct
         case LOGGER_ITEM_STORE_ENTRY:
             total = _logger_thread_parse_ise(e, scratch);
             break;
+        case LOGGER_GET_MISSES_ENTRY:
+        	total = _logger_thread_parse_gm(e, scratch);
 
     }
 
@@ -625,6 +643,7 @@ static void _logger_log_evictions(logentry *e, item *it) {
     le->it_flags = it->it_flags;
     le->nkey = it->nkey;
     le->clsid = ITEM_clsid(it);
+    le->cost = it->cost;
     memcpy(le->key, ITEM_key(it), it->nkey);
     e->size = sizeof(struct logentry_eviction) + le->nkey;
 }
@@ -699,7 +718,9 @@ enum logger_ret_type logger_log(logger *l, const enum log_entry_type event, cons
         l->dropped++;
         return LOGGER_RET_NOSPACE;
     }
+    fprintf(stderr,"LKJ");
     e->event = d->subtype;
+    fprintf(stderr,"LKJ2 : %d",d->subtype);
     e->pad = 0;
     e->gid = logger_get_gid();
     /* TODO: Could pass this down as an argument now that we're using
@@ -753,6 +774,9 @@ enum logger_ret_type logger_log(logger *l, const enum log_entry_type event, cons
             uint8_t sclsid = va_arg(ap, int);
             _logger_log_item_store(e, status, comm, skey, snkey, sttl, sclsid);
             break;
+        case LOGGER_GET_MISSES_ENTRY:
+        	_logger_log_evictions(e, (item *)entry);
+        	break;
     }
 
 #ifdef NEED_ALIGN
