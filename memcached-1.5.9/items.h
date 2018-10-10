@@ -3,6 +3,7 @@
 #define WARM_LRU 64
 #define COLD_LRU 128
 #define TEMP_LRU 192
+#define HOT_SIZE 10000
 
 #define CLEAR_LRU(id) (id & ~(3<<6))
 #define GET_LRU(id) (id & (3<<6))

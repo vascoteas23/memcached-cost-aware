@@ -2812,6 +2812,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
         /* add only adds a nonexistent item, but promote to head of LRU */
     	fprintf(stderr,"ADDS and %d \n", comm);
 //    	it_update_priority(old_it);
+    	old_it->priority = it->priority;
         do_item_update(old_it);
     } else if (!old_it && (comm == NREAD_REPLACE
         || comm == NREAD_APPEND || comm == NREAD_PREPEND))
@@ -2900,6 +2901,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
             	//replace I think - vasco
 //            	it_update_priority(it);
                 STORAGE_delete(c->thread->storage, old_it);
+                fprintf(stderr,"old_id: %d, new_id: %d \n",old_it->slabs_clsid,it->slabs_clsid);
                 item_replace(old_it, it, hv);
             } else {
             	fprintf(stderr,"INSERT and %d \n", comm);
@@ -2917,8 +2919,22 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
 
     if (old_it != NULL)
-        do_item_remove(old_it);         /* release our reference */
+//    	fprintf(stderr,"AQUI");
+//    if(old_it->slabs_clsid != 0)
+//    	fprintf(stderr,"NBM, id: %d",old_it->slabs_clsid);
+//    	if((old_it->slabs_clsid!=0)&&old_it->slabs_clsid > HOT_LRU_L && old_it->slabs_clsid < WARM_LRU){
+//    		old_it->slabs_clsid -= HOT_LRU_L;
+//    		fprintf(stderr,"NBMS, id: %d",old_it->slabs_clsid);
+//    	}
+        do_item_remove(old_it);         /* release our reference *///corrigir o id para não libertar memoria mal referenciada
     if (new_it != NULL)
+//    	fprintf(stderr,"AQUI");
+//    	if(new_it->slabs_clsid!=0)
+//    	fprintf(stderr,"NBMt, id: %d",new_it->slabs_clsid);
+//    	if((new_it->slabs_clsid!=0)&& new_it->slabs_clsid > HOT_LRU_L && new_it->slabs_clsid < WARM_LRU){
+//    		new_it->slabs_clsid -= HOT_LRU_L;
+//    		fprintf(stderr,"NBMSt, id: %d",old_it->slabs_clsid);
+//    	}
         do_item_remove(new_it);
 
     if (stored == STORED) {

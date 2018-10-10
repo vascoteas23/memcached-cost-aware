@@ -232,7 +232,6 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
 
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		const double priority, const int flag) {
-	assert(flag <= 32);
 	item *it = NULL;
 	int i;
 	/* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -371,17 +370,16 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				htotal += sizeof(uint64_t);
 			}
 			hdr_id = slabs_clsid(htotal);
-			it = do_item_alloc_pull_priority(htotal, hdr_id, priority, ((int) sizes[id | HOT_LRU_L]));
+			it = do_item_alloc_pull_priority(htotal, hdr_id, priority, nbytes);
 			/* setting ITEM_CHUNKED is fine here because we aren't LINKED yet. */
 			if (it != NULL)
 				it->it_flags |= ITEM_CHUNKED;
 		} else {
-			it = do_item_alloc_pull_priority(ntotal, id, priority, ((int) sizes[id | HOT_LRU_L]));
+			it = do_item_alloc_pull_priority(ntotal, id, priority, nbytes);
 		}
 
 		if (it == NULL) {
 			pthread_mutex_lock(&lru_locks[id]);
-			fprintf(stderr,"OUTZ");
 			itemstats[id].outofmemory++;
 			pthread_mutex_unlock(&lru_locks[id]);
 			return NULL;
@@ -393,7 +391,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		/* Refcount is seeded to 1 by slabs_alloc() */
 		it->next = it->prev = 0;
 
-		it_new_priority(it, cost, nbytes);
+		it_new_priority(it, cost, nbytes,id);
 
 		/* Items are initially loaded into the HOT_LRU. This is '0' but I want at
 		 * least a note here. Compiler (hopefully?) optimizes this out.
@@ -405,9 +403,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		fprintf(stderr, "LAYER1 \n");
 		if (return_minimum_priority_slclass(id | HOT_LRU_L) == 0) {
 			fprintf(stderr, "LAYER2 \n");
-			if (sizes[id | HOT_LRU_L] < 32) {
+			if (sizes[id | HOT_LRU_L] < HOT_SIZE) {
 				assert(
-						sizes[id | HOT_LRU_L] < 32 && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+						sizes[id | HOT_LRU_L] < HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
 				fprintf(stderr, "LAYER3 \n");
 				id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 				fprintf(stderr,
@@ -417,7 +415,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			} else {
 				fprintf(stderr, "LAYER4 \n");
 				assert(
-						sizes[id | HOT_LRU_L] >= 32 && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+						sizes[id | HOT_LRU_L] >= HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
 				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 				fprintf(stderr,
 						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
@@ -458,7 +456,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		it->it_flags |= settings.use_cas ? ITEM_CAS : 0;
 		it->nkey = nkey;
 		it->nbytes = nbytes;
-		it->cost = cost;
+		it->cost = 0;
 //	if (memfull) {
 //
 //	} else {
@@ -492,6 +490,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	void item_free(item *it) {
 		size_t ntotal = ITEM_ntotal(it);
 		unsigned int clsid;
+		if(it->slabs_clsid > HOT_LRU_L && it->slabs_clsid < WARM_LRU)
+			it->slabs_clsid -= HOT_LRU_L;
 		assert((it->it_flags & ITEM_LINKED) == 0);
 		assert(it != heads[it->slabs_clsid]);
 		assert(it != tails[it->slabs_clsid]);
@@ -690,6 +690,32 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		if (settings.lru_segmented) {
 			assert((it->it_flags & ITEM_SLABBED) == 0);
 			if ((it->it_flags & ITEM_LINKED) != 0) {
+				int ori_id = ITEM_clsid(it);
+//				if(it->slabs_clsid > HOT_LRU_L && it->slabs_clsid<WARM_LRU)
+//					ori_id = it->slabs_clsid - HOT_LRU_L;
+				//falta testar
+				fprintf(stderr,"entrei: %f, id: %d, id_class: %d",it->priority,it->slabs_clsid, ori_id);
+				if((it->priority > return_minimum_priority_slclass(ori_id)) && (it->slabs_clsid < HOT_LRU_L && it->slabs_clsid > WARM_LRU)){
+					fprintf(stderr, "UPDn\n");
+					fprintf(stderr, "ITEM_clsid(it): %d\n",ori_id);
+					item *tail;
+					do_item_unlink_q(it);
+					it->slabs_clsid = ori_id;
+					fprintf(stderr, "it_id: %d\n",it->slabs_clsid);
+					tail = tails[(it->slabs_clsid | HOT_LRU_L)];
+					if(tail == NULL)
+						fprintf(stderr,"NULL, size %d, id %d, orig_id%d", sizes[(it->slabs_clsid | HOT_LRU_L)],(it->slabs_clsid | HOT_LRU_L), ori_id);
+					fprintf(stderr, "tail_id: %d\n",ori_id | HOT_LRU_L);
+					item_unlink_q(tail);
+					(tail)->slabs_clsid = ori_id;
+					fprintf(stderr, "tailNew_id: %d\n",ori_id);
+					it->slabs_clsid |= HOT_LRU_L;
+					(tail)->slabs_clsid |= WARM_LRU;
+					fprintf(stderr, "itNew_id: %d\n",ori_id);
+					fprintf(stderr, "tailNewNEW_id: %d\n",ori_id | WARM_LRU);
+					item_link_q_warm(tail);
+					item_link_q(it);
+				}else{
 				//mudar aqui para ir para HOTPRIORITY_Q
 				if (ITEM_lruid(it) == COLD_LRU
 						&& (it->it_flags & ITEM_ACTIVE)) {
@@ -707,6 +733,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					fprintf(stderr, "aqui 1");
 				}
 			}
+		}
 		} else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
 			assert((it->it_flags & ITEM_SLABBED) == 0);
 			fprintf(stderr, "aqui 2");
@@ -1408,8 +1435,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 ////											NULL) <= 0){
 //					}else{
 //					assert(cold_search != NULL);
-					assert(id >=32);
-					if(sizes[id] >= 32 && found > 0){
+					assert(id >=HOT_SIZE);
+					if(sizes[id] >= HOT_SIZE && found > 0){
 					itemstats[id].moves_to_warm++;
 					move_to_lru = WARM_LRU; // move to WARM
 					do_item_unlink_q(search);

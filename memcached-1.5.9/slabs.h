@@ -14,7 +14,7 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
 void slabs_prefill_global(void);
 
 /** Function to give a priority to new items **/
-void it_new_priority(item *it, int cost, int size);
+void it_new_priority(item *it, int cost, int size, int id);
 
 /** Function to update a priority to items in LRU **/
 void it_update_priority(item *it);

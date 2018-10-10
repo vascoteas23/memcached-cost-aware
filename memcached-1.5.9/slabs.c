@@ -345,7 +345,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id,
 	slabclass_t *p;
 	void *ret = NULL;
 	item *it = NULL;
-
+	fprintf(stderr, "idlk: %d", id);
 	if (id < POWER_SMALLEST || id > power_largest) {
 		MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
 		return NULL;
@@ -817,12 +817,12 @@ double return_it_priority(int id, int cost, int size){
 			+ ((double) cost / (double) size));
 }
 
-void it_new_priority(item *it, int cost, int size) {
+void it_new_priority(item *it, int cost, int size, int id) {
 
-	it->priority = ((double) (slabclass[it->slabs_clsid].inflation)
+	it->priority = ((double) (slabclass[id].inflation)
 			+ ((double) cost / (double) size));
 
-	fprintf(stderr,"priority: %f, inflation: %f, cost: %u, size of data: %d",it->priority, slabclass[it->slabs_clsid].inflation, it->cost, it->nbytes);
+	fprintf(stderr,"priority: %f,id %d, inflation: %f, cost: %u, size of data: %d",it->priority,id, slabclass[id].inflation, it->cost, it->nbytes);
 
 }
 
@@ -844,18 +844,23 @@ void minimum_priority_slclass(int id, double priority) {
 			s_cls->minpriority = priority;
 			return;
 	}
-	if(s_cls->minpriority == 0){
-		s_cls->minpriority = priority;
-		return;
-	}
+//	if(s_cls->minpriority == 0){
+//		s_cls->minpriority = priority;
+//		return;
+//	}
 
 }
 
 void sl_new_inflation(int id,double inf){
 	slabclass_t *s_cls;
-		s_cls = &slabclass[id];
+	s_cls = &slabclass[id];
+
+	if (s_cls->inflation < inf) {
 		s_cls->inflation = inf;
-		fprintf(stderr,"id: %d, inf: %f, infz: %f",id,inf,s_cls->inflation);
+		fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
+		return;
+	}
+	fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
 }
 
 double return_minimum_priority_slclass(int id) {
