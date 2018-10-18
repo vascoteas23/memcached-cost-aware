@@ -20,10 +20,10 @@ void it_new_priority(item *it, int cost, int size, int id);
 void it_update_priority(item *it);
 
 /** Function to atribute the new mininum priority of a slabclass **/
-void minimum_priority_slclass(int id, double priority);
+void minimum_priority_slclass(int id, float priority);
 
 /**function to update priority**/
-void sl_new_inflation(int id,double inf);
+void sl_new_inflation(int id,float inf);
 
 int is_slc_full(int id);
 

@@ -813,30 +813,31 @@ static int slab_rebalance_start(void) {
 
 double return_it_priority(int id, int cost, int size){
 
-	return ((double) (slabclass[id].inflation)
-			+ ((double) cost / (double) size));
+//	return ((float) (slabclass[id].inflation)
+//			+ ((float) cost / (float) size));
+		return ((float) (slabclass[id].inflation) + (float) cost);
 }
 
 void it_new_priority(item *it, int cost, int size, int id) {
 
-	it->priority = ((double) (slabclass[id].inflation)
-			+ ((double) cost / (double) size));
-
-	fprintf(stderr,"priority: %f,id %d, inflation: %f, cost: %u, size of data: %d",it->priority,id, slabclass[id].inflation, it->cost, it->nbytes);
-
-}
-
-void it_update_priority(item *it) {
-	slabclass_t *s_cls;
-	s_cls = &slabclass[it->slabs_clsid];
-	assert(it->priority >= 0);
-	s_cls->inflation = (unsigned int) s_cls->minpriority;
-	it->priority = ((double) s_cls->inflation)
-			+ ((double) it->cost / (double) it->nbytes);
+//	it->priority = ((float) (slabclass[id].inflation)
+//			+ ((float) cost / (float) size));
+	it->priority = ((float) (slabclass[id].inflation) + ((float) cost));
+	fprintf(stderr,"priority: %f,id %d, inflation: %f, size of data: %d",it->priority,id, slabclass[id].inflation, it->nbytes);
 
 }
 
-void minimum_priority_slclass(int id, double priority) {
+//void it_update_priority(item *it) {
+//	slabclass_t *s_cls;
+//	s_cls = &slabclass[it->slabs_clsid];
+//	assert(it->priority >= 0);
+//	s_cls->inflation = (unsigned int) s_cls->minpriority;
+//	it->priority = ((double) s_cls->inflation)
+//			+ ((double) it->cost / (double) it->nbytes);
+//
+//}
+
+void minimum_priority_slclass(int id, float priority) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
 
@@ -851,7 +852,7 @@ void minimum_priority_slclass(int id, double priority) {
 
 }
 
-void sl_new_inflation(int id,double inf){
+void sl_new_inflation(int id,float inf){
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
 

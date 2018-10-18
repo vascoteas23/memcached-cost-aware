@@ -471,9 +471,7 @@ typedef struct _stritem {
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
     int             nbytes;     /* size of data */
-    unsigned int    cost;
-    int 			hot; 		/* if item is in hot left LRU */
-    double priority;
+    float priority;
     unsigned short  refcount;
     uint8_t         nsuffix;    /* length of flags-and-length string */
     uint8_t         it_flags;   /* ITEM_* above */

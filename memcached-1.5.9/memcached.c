@@ -2880,7 +2880,7 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
                 /* we have it and old_it here - alloc memory to hold both */
                 /* flags was already lost - so recover them from ITEM_suffix(it) */
                 FLAGS_CONV(settings.inline_ascii_response, old_it, flags);
-                new_it = do_item_alloc(key, it->nkey, it->cost, flags, old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
+                new_it = do_item_alloc(key, it->nkey, flags,0,  old_it->exptime, it->nbytes + old_it->nbytes - 2 /* CRLF */);
 
                 /* copy data from it and old_it to new_it */
                 if (new_it == NULL || _store_item_copy_data(comm, old_it, new_it, it) == -1) {
@@ -4291,7 +4291,7 @@ enum delta_result_type do_add_delta(conn *c, const char *key, const size_t nkey,
         item *new_it;
         uint32_t flags;
         FLAGS_CONV(settings.inline_ascii_response, it, flags);
-        new_it = do_item_alloc(ITEM_key(it), it->nkey, it->cost, flags, it->exptime, res + 2);
+        new_it = do_item_alloc(ITEM_key(it), it->nkey, 0, flags, it->exptime, res + 2);
         if (new_it == 0) {
             do_item_remove(it);
             return EOM;

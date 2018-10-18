@@ -231,7 +231,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
 }
 
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
-		const double priority, const int flag) {
+		const float priority, const int flag) {
 	item *it = NULL;
 	int i;
 	/* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -288,7 +288,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 
 			}
 		} else{
-			fprintf(stderr,"POTIS2");
+//			fprintf(stderr,"POTIS2");
 			break;
 		}
 	}
@@ -340,7 +340,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		uint8_t nsuffix;
 		item *it = NULL;
 		char suffix[40];
-		double priority;
+		float priority;
 //	bool memfull = false;
 		// Avoid potential underflows.
 		if (nbytes < 2)
@@ -400,36 +400,36 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		id |= TEMP_LRU;
 	} else if (settings.lru_segmented
 			&& (it->priority > return_minimum_priority_slclass(id | HOT_LRU_L))) {
-		fprintf(stderr, "LAYER1 \n");
+//		fprintf(stderr, "LAYER1 \n");
 		if (return_minimum_priority_slclass(id | HOT_LRU_L) == 0) {
-			fprintf(stderr, "LAYER2 \n");
+//			fprintf(stderr, "LAYER2 \n");
 			if (sizes[id | HOT_LRU_L] < HOT_SIZE) {
 				assert(
 						sizes[id | HOT_LRU_L] < HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
-				fprintf(stderr, "LAYER3 \n");
+//				fprintf(stderr, "LAYER3 \n");
 				id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
-				fprintf(stderr,
-						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
-						sizes[id], id, it->priority,
-						return_minimum_priority_slclass(id | HOT_LRU_L));
+//				fprintf(stderr,
+//						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+//						sizes[id], id, it->priority,
+//						return_minimum_priority_slclass(id | HOT_LRU_L));
 			} else {
-				fprintf(stderr, "LAYER4 \n");
+//				fprintf(stderr, "LAYER4 \n");
 				assert(
 						sizes[id | HOT_LRU_L] >= HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
 				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
-				fprintf(stderr,
-						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
-						sizes[id], id, it->priority,
-						return_minimum_priority_slclass(id | HOT_LRU_L));
+//				fprintf(stderr,
+//						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+//						sizes[id], id, it->priority,
+//						return_minimum_priority_slclass(id | HOT_LRU_L));
 			}
 		} else {
 //			if(sizes[id | HOT_LRU_L] <= 32){
 			fprintf(stderr, "LAYER5 \n");
 			id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
-			fprintf(stderr,
-					"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
-					sizes[id], id, it->priority,
-					return_minimum_priority_slclass(id | HOT_LRU_L));
+//			fprintf(stderr,
+//					"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
+//					sizes[id], id, it->priority,
+//					return_minimum_priority_slclass(id | HOT_LRU_L));
 //			}else{
 //				fprintf(stderr, "LAYER5 \n");
 //				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
@@ -444,8 +444,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			&& (it->priority < return_minimum_priority_slclass(id | HOT_LRU_L))) {
 
 		id |= HOT_LRU_R;
-		fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id, sizes[id],
-				return_minimum_priority_slclass(id | HOT_LRU_L));
+//		fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id, sizes[id],
+//				return_minimum_priority_slclass(id | HOT_LRU_L));
 	} else {
 			/* There is only COLD in compat-mode */
 			id |= COLD_LRU;
@@ -456,7 +456,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		it->it_flags |= settings.use_cas ? ITEM_CAS : 0;
 		it->nkey = nkey;
 		it->nbytes = nbytes;
-		it->cost = 0;
 //	if (memfull) {
 //
 //	} else {
@@ -525,7 +524,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	static void do_item_link_q(item *it) { /* item is the new head */
 		item **head, **tail;
 		assert((it->it_flags & ITEM_SLABBED) == 0);
-		fprintf(stderr,"class: %d, sizej: %d",it->slabs_clsid, sizes[it->slabs_clsid]);
+//		fprintf(stderr,"class: %d, sizej: %d",it->slabs_clsid, sizes[it->slabs_clsid]);
 		head = &heads[it->slabs_clsid];
 		tail = &tails[it->slabs_clsid];
 		assert(it != *head);
@@ -654,7 +653,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			assoc_delete(ITEM_key(it), it->nkey, hv);
 			do_item_unlink_q(it);
 			do_item_remove(it);
-			fprintf(stderr,"REMOVEDDD");
+//			fprintf(stderr,"REMOVEDDD");
 		}
 	}
 
@@ -710,9 +709,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					(tail)->slabs_clsid = ori_id;
 					fprintf(stderr, "tailNew_id: %d\n",ori_id);
 					it->slabs_clsid |= HOT_LRU_L;
-					(tail)->slabs_clsid |= WARM_LRU;
+					(tail)->slabs_clsid |= COLD_LRU;
 					fprintf(stderr, "itNew_id: %d\n",ori_id);
-					fprintf(stderr, "tailNewNEW_id: %d\n",ori_id | WARM_LRU);
+					fprintf(stderr, "tailNewNEW_id: %d\n",ori_id | COLD_LRU);
 					item_link_q_warm(tail);
 					item_link_q(it);
 				}else{
@@ -1358,7 +1357,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				it = search; /* No matter what, we're stopping */
 				if (flags & LRU_PULL_EVICT) {
 					int cold_id = orig_id;
-					int cold_tries = 5;
+					//int cold_tries = 5;
 					item *cold_search;
 					item *cold_next_it;
 					int found = 0;
@@ -1382,8 +1381,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					cold_search = tails[orig_id | COLD_LRU];
 
 					fprintf(stderr, "TEST, cold_id: %d, size_of_cold %d , realS: %llu\n", cold_id, sizes[orig_id+ HOT_LRU_L | COLD_LRU], itemstats[id].moves_to_cold);
-					for (; cold_tries > 0 && cold_search != NULL;
-							cold_tries--, cold_search = cold_next_it) {
+					if(cold_search != NULL){
+//					for (; cold_tries > 0 && cold_search != NULL;
+//							cold_tries--, cold_search = cold_next_it) {
 
 						/* we might relink search mid-loop, so search->prev isn't reliable */
 						cold_next_it = cold_search->prev;
@@ -1425,8 +1425,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						if (settings.slab_automove == 2) {
 						slabs_reassign(-1, orig_id);
 					}
-
-						break;
+//						cold_search = cold_next_it;
+//						break;
 					}
 //					pthread_mutex_unlock(&lru_locks[cold_id]);
 //					if(lru_pull_tail(orig_id, COLD_LRU, total_bytes, LRU_PULL_EVICT, 0,
@@ -1542,14 +1542,14 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 //		fprintf(stderr,"count %d", removed);
 		if (it != NULL) {
 			if (move_to_lru) {
-				if(flags & LRU_PULL_CRAWL_BLOCKS){
-				fprintf(stderr,"CRAWLING idC: %d\n",it->slabs_clsid);
-				}
-				fprintf(stderr,"idJ: %d\n",it->slabs_clsid );
+//				if(flags & LRU_PULL_CRAWL_BLOCKS){
+//				fprintf(stderr,"CRAWLING idC: %d\n",it->slabs_clsid);
+//				}
+//				fprintf(stderr,"idJ: %d\n",it->slabs_clsid );
 				it->slabs_clsid = ITEM_clsid(it);
-				fprintf(stderr,"idP: %d\n",it->slabs_clsid );
+//				fprintf(stderr,"idP: %d\n",it->slabs_clsid );
 				it->slabs_clsid |= move_to_lru;
-				fprintf(stderr,"moveTo: %d && id: %d\n", move_to_lru,it->slabs_clsid );
+//				fprintf(stderr,"moveTo: %d && id: %d\n", move_to_lru,it->slabs_clsid );
 				item_link_q(it);
 			}
 			if ((flags & LRU_PULL_RETURN_ITEM) == 0) {

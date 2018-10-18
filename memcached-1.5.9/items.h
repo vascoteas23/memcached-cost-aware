@@ -3,7 +3,7 @@
 #define WARM_LRU 64
 #define COLD_LRU 128
 #define TEMP_LRU 192
-#define HOT_SIZE 10000
+#define HOT_SIZE 100000
 
 #define CLEAR_LRU(id) (id & ~(3<<6))
 #define GET_LRU(id) (id & (3<<6))
@@ -16,7 +16,7 @@ item *do_item_alloc(char *key, const size_t nkey, const unsigned int cost, const
 item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain);
 item *do_item_alloc_pull(const size_t ntotal, const unsigned int id);
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
-		const double priority, const int flag);
+		const float priority, const int flag);
 void item_free(item *it);
 bool item_size_ok(const size_t nkey, const int flags, const int nbytes);
 

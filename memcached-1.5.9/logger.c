@@ -643,7 +643,7 @@ static void _logger_log_evictions(logentry *e, item *it) {
     le->it_flags = it->it_flags;
     le->nkey = it->nkey;
     le->clsid = ITEM_clsid(it);
-    le->cost = it->cost;
+    le->cost = 0;
     memcpy(le->key, ITEM_key(it), it->nkey);
     e->size = sizeof(struct logentry_eviction) + le->nkey;
 }
