@@ -82,10 +82,10 @@ item *assoc_find(const char *key, const size_t nkey, const uint32_t hv) {
     } else {
         it = primary_hashtable[hv & hashmask(hashpower)];
     }
-
     item *ret = NULL;
     int depth = 0;
     while (it) {
+
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
             break;

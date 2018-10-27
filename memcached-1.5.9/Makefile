@@ -128,7 +128,7 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkgincludedir)"
 PROGRAMS = $(bin_PROGRAMS) $(noinst_PROGRAMS)
-am__memcached_SOURCES_DIST = memcached.c memcached.h hash.c hash.h \
+am__memcached_SOURCES_DIST = bloom.c bloom.h MurmurHash2.c murmurhash2.h memcached.c memcached.h hash.c hash.h \
 	jenkins_hash.c jenkins_hash.h murmur3_hash.c murmur3_hash.h \
 	slabs.c slabs.h items.c items.h assoc.c assoc.h thread.c \
 	daemon.c stats.c stats.h util.c util.h trace.h cache.h \
@@ -150,7 +150,7 @@ am__objects_1 = memcached-cache.$(OBJEXT)
 #	memcached-crc32c.$(OBJEXT) \
 #	memcached-storage.$(OBJEXT) \
 #	memcached-slab_automove_extstore.$(OBJEXT)
-am_memcached_OBJECTS = memcached-memcached.$(OBJEXT) \
+am_memcached_OBJECTS =memcached-bloom.$(OBJEXT) memcached-murmurhash2.$(OBJEXT) memcached-memcached.$(OBJEXT) \
 	memcached-hash.$(OBJEXT) memcached-jenkins_hash.$(OBJEXT) \
 	memcached-murmur3_hash.$(OBJEXT) memcached-slabs.$(OBJEXT) \
 	memcached-items.$(OBJEXT) memcached-assoc.$(OBJEXT) \
@@ -163,7 +163,7 @@ am_memcached_OBJECTS = memcached-memcached.$(OBJEXT) \
 	$(am__objects_5) $(am__objects_6)
 memcached_OBJECTS = $(am_memcached_OBJECTS)
 am__DEPENDENCIES_1 =
-am__memcached_debug_SOURCES_DIST = memcached.c memcached.h hash.c \
+am__memcached_debug_SOURCES_DIST = bloom.c bloom.h MurmurHash2.c murmurhash2.h memcached.c memcached.h hash.c \
 	hash.h jenkins_hash.c jenkins_hash.h murmur3_hash.c \
 	murmur3_hash.h slabs.c slabs.h items.c items.h assoc.c assoc.h \
 	thread.c daemon.c stats.c stats.h util.c util.h trace.h \
@@ -225,15 +225,17 @@ am__v_P_1 = :
 AM_V_GEN = $(am__v_GEN_$(V))
 am__v_GEN_ = $(am__v_GEN_$(AM_DEFAULT_VERBOSITY))
 am__v_GEN_0 = @echo "  GEN     " $@;
-am__v_GEN_1 = 
+am__v_GEN_1 =
 AM_V_at = $(am__v_at_$(V))
 am__v_at_ = $(am__v_at_$(AM_DEFAULT_VERBOSITY))
 am__v_at_0 = @
-am__v_at_1 = 
+am__v_at_1 =
 DEFAULT_INCLUDES = -I.
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/cache.Po \
+	./$(DEPDIR)/memcached-bloom.Po \
+	./$(DEPDIR)/memcached-murmurhash2.Po \
 	./$(DEPDIR)/memcached-assoc.Po \
 	./$(DEPDIR)/memcached-bipbuffer.Po \
 	./$(DEPDIR)/memcached-cache.Po \
@@ -288,19 +290,19 @@ am__mv = mv -f
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
 am__v_lt_0 = --silent
-am__v_lt_1 = 
+am__v_lt_1 =
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 AM_V_CC = $(am__v_CC_$(V))
 am__v_CC_ = $(am__v_CC_$(AM_DEFAULT_VERBOSITY))
 am__v_CC_0 = @echo "  CC      " $@;
-am__v_CC_1 = 
+am__v_CC_1 =
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 AM_V_CCLD = $(am__v_CCLD_$(V))
 am__v_CCLD_ = $(am__v_CCLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CCLD_0 = @echo "  CCLD    " $@;
-am__v_CCLD_1 = 
+am__v_CCLD_1 =
 SOURCES = $(memcached_SOURCES) $(memcached_debug_SOURCES) sizes.c \
 	$(testapp_SOURCES) $(timedrun_SOURCES)
 DIST_SOURCES = $(am__memcached_SOURCES_DIST) \
@@ -433,28 +435,28 @@ CC = gcc
 CCDEPMODE = depmode=gcc3
 CFLAGS = -g -O2 -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
-CPPFLAGS = 
+CPPFLAGS =
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
-DTRACE = 
-DTRACEFLAGS = 
+DTRACE =
+DTRACEFLAGS =
 ECHO_C = \c
-ECHO_N = 
-ECHO_T = 
+ECHO_N =
+ECHO_T =
 EGREP = /usr/bin/grep -E
-ENABLE_SASL = 
-EXEEXT = 
+ENABLE_SASL =
+EXEEXT =
 GREP = /usr/bin/grep
 INSTALL = /usr/bin/install -c
 INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
-LDFLAGS = 
-LIBOBJS = 
-LIBS = -levent 
-LTLIBOBJS = 
+LDFLAGS =
+LIBOBJS =
+LIBS = -levent /Users/v.coelho/Documents/libbloom-master/build/libbloom.a
+LTLIBOBJS =
 MAKEINFO = ${SHELL} /Users/v.coelho/Documents/memcached/memcached-1.5.9/missing makeinfo
 MKDIR_P = ./install-sh -c -d
 OBJEXT = o
@@ -463,15 +465,15 @@ PACKAGE_BUGREPORT = memcached@googlegroups.com
 PACKAGE_NAME = memcached
 PACKAGE_STRING = memcached 1.5.9
 PACKAGE_TARNAME = memcached
-PACKAGE_URL = 
+PACKAGE_URL =
 PACKAGE_VERSION = 1.5.9
 PATH_SEPARATOR = :
 PROFILER = /usr/bin/gcov
 PROFILER_FLAGS = -fprofile-arcs -ftest-coverage
-PROFILER_LDFLAGS = 
-SET_MAKE = 
+PROFILER_LDFLAGS =
+SET_MAKE =
 SHELL = /bin/sh
-STRIP = 
+STRIP =
 VERSION = 1.5.9
 XML2RFC = no
 XSLTPROC = /usr/bin/xsltproc
@@ -482,12 +484,12 @@ abs_top_srcdir = /Users/v.coelho/Documents/memcached/memcached-1.5.9
 ac_ct_CC = gcc
 am__include = include
 am__leading_dot = .
-am__quote = 
+am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
 build = x86_64-apple-darwin17.6.0
-build_alias = 
+build_alias =
 build_cpu = x86_64
 build_os = darwin17.6.0
 build_vendor = apple
@@ -498,7 +500,7 @@ docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
 host = x86_64-apple-darwin17.6.0
-host_alias = 
+host_alias =
 host_cpu = x86_64
 host_os = darwin17.6.0
 host_vendor = apple
@@ -521,8 +523,8 @@ sbindir = ${exec_prefix}/sbin
 sharedstatedir = ${prefix}/com
 srcdir = .
 sysconfdir = ${prefix}/etc
-target_alias = 
-top_build_prefix = 
+target_alias =
+top_build_prefix =
 top_builddir = .
 top_srcdir = .
 pkginclude_HEADERS = protocol_binary.h
@@ -535,7 +537,7 @@ memcached_SOURCES = memcached.c memcached.h hash.c hash.h \
 	daemon.c stats.c stats.h util.c util.h trace.h cache.h \
 	sasl_defs.h bipbuffer.c bipbuffer.h logger.c logger.h \
 	crawler.c crawler.h itoa_ljust.c itoa_ljust.h slab_automove.c \
-	slab_automove.h $(am__append_1) $(am__append_3) \
+	slab_automove.h bloom.c bloom.h MurmurHash2.c murmurhash2.h $(am__append_1) $(am__append_3) \
 	$(am__append_4) $(am__append_5) $(am__append_6) \
 	$(am__append_7)
 memcached_debug_SOURCES = $(memcached_SOURCES)
@@ -597,7 +599,7 @@ config.h: stamp-h1
 stamp-h1: $(srcdir)/config.h.in $(top_builddir)/config.status
 	@rm -f stamp-h1
 	cd $(top_builddir) && $(SHELL) ./config.status config.h
-$(srcdir)/config.h.in:  $(am__configure_deps) 
+$(srcdir)/config.h.in:  $(am__configure_deps)
 	($(am__cd) $(top_srcdir) && $(AUTOHEADER))
 	rm -f stamp-h1
 	touch $@
@@ -650,23 +652,23 @@ clean-binPROGRAMS:
 clean-noinstPROGRAMS:
 	-test -z "$(noinst_PROGRAMS)" || rm -f $(noinst_PROGRAMS)
 
-memcached$(EXEEXT): $(memcached_OBJECTS) $(memcached_DEPENDENCIES) $(EXTRA_memcached_DEPENDENCIES) 
+memcached$(EXEEXT): $(memcached_OBJECTS) $(memcached_DEPENDENCIES) $(EXTRA_memcached_DEPENDENCIES)
 	@rm -f memcached$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(memcached_OBJECTS) $(memcached_LDADD) $(LIBS)
 
-memcached-debug$(EXEEXT): $(memcached_debug_OBJECTS) $(memcached_debug_DEPENDENCIES) $(EXTRA_memcached_debug_DEPENDENCIES) 
+memcached-debug$(EXEEXT): $(memcached_debug_OBJECTS) $(memcached_debug_DEPENDENCIES) $(EXTRA_memcached_debug_DEPENDENCIES)
 	@rm -f memcached-debug$(EXEEXT)
 	$(AM_V_CCLD)$(memcached_debug_LINK) $(memcached_debug_OBJECTS) $(memcached_debug_LDADD) $(LIBS)
 
-sizes$(EXEEXT): $(sizes_OBJECTS) $(sizes_DEPENDENCIES) $(EXTRA_sizes_DEPENDENCIES) 
+sizes$(EXEEXT): $(sizes_OBJECTS) $(sizes_DEPENDENCIES) $(EXTRA_sizes_DEPENDENCIES)
 	@rm -f sizes$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(sizes_OBJECTS) $(sizes_LDADD) $(LIBS)
 
-testapp$(EXEEXT): $(testapp_OBJECTS) $(testapp_DEPENDENCIES) $(EXTRA_testapp_DEPENDENCIES) 
+testapp$(EXEEXT): $(testapp_OBJECTS) $(testapp_DEPENDENCIES) $(EXTRA_testapp_DEPENDENCIES)
 	@rm -f testapp$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(testapp_OBJECTS) $(testapp_LDADD) $(LIBS)
 
-timedrun$(EXEEXT): $(timedrun_OBJECTS) $(timedrun_DEPENDENCIES) $(EXTRA_timedrun_DEPENDENCIES) 
+timedrun$(EXEEXT): $(timedrun_OBJECTS) $(timedrun_DEPENDENCIES) $(EXTRA_timedrun_DEPENDENCIES)
 	@rm -f timedrun$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(timedrun_OBJECTS) $(timedrun_LDADD) $(LIBS)
 
@@ -676,6 +678,62 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+	BLOOM_VERSION_MAJOR=1
+	BLOOM_VERSION_MINOR=5
+	BLOOM_VERSION=$(BLOOM_VERSION_MAJOR).$(BLOOM_VERSION_MINOR)
+
+	TOP := $(shell /bin/pwd)
+	BUILD_OS := $(shell uname)
+
+	BUILD=$(TOP)/build
+	INC=-I$(TOP) -I$(TOP)/murmur2
+	LIB=-lm
+	COM=${CC} $(CFLAGS) $(CPPFLAGS) -Wall ${OPT} ${MM} -std=c99 -fPIC -DBLOOM_VERSION=$(BLOOM_VERSION)
+	TESTDIR=$(TOP)/misc/test
+
+	ifeq ($(BITS),)
+	MM=-m64
+	else ifeq ($(BITS),64)
+	MM=-m64
+	else ifeq ($(BITS),32)
+	MM=-m32
+	else ifeq ($(BITS),default)
+	MM=
+	else
+	MM=$(BITS)
+	endif
+
+
+	#
+	# This target runs a test which creates a filter of capacity N and inserts
+	# N elements, for N in 100,000 to 1,000,000 with an expected error of 0.001.
+	# To preserve and graph the output, move it to ./misc/collisions and use
+	# the ./misc/collisions/dograph script to plot it.
+	#
+	# WARNING: This can take a very long time (on a slow machine, multiple days)
+	# to run.
+	#
+#	collision_test: $(BUILD)/test-libbloom
+#		$(BUILD)/test-libbloom -G 100000 1000000 10 0.001 \
+#		    | tee collision_data_v$(BLOOM_VERSION)
+
+	#
+	# This target should be run when preparing a release, includes more tests
+	# than the 'test' target.
+	# For a final release, should run the collision_test target above as well,
+	# not included here as it takes so long.
+	#
+#	release_test:
+#		$(MAKE) test
+#		$(MAKE) vtest
+#		$(BUILD)/test-libbloom -G 100000 1000000 50000 0.001 \
+		    | tee short_coll_data
+#		gzip short_coll_data
+#		./misc/collisions/dograph short_coll_data.gz
+
+include ./$(DEPDIR)/memcached-bloom.Po
+include ./$(DEPDIR)/memcached-murmurhash2.Po
+include ./$(DEPDIR)/memcached-assoc.Po
 include ./$(DEPDIR)/cache.Po # am--include-marker
 include ./$(DEPDIR)/memcached-assoc.Po # am--include-marker
 include ./$(DEPDIR)/memcached-bipbuffer.Po # am--include-marker
@@ -751,6 +809,14 @@ am--depfiles: $(am__depfiles_remade)
 #	$(AM_V_CC)source='$<' object='$@' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
 #	$(AM_V_CC_no)$(COMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+#memcached-bloom.o: bloom.c
+#	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-bloom.o -MD -MP -MF $(DEPDIR)/memcached-bloom.Tpo -c -o memcached-bloom.o `test -f 'bloom.c' || echo '$(srcdir)/'`bloom.c
+#	$(AM_V_at)$(am__mv) $(DEPDIR)/memcached-bloom.Tpo $(DEPDIR)/memcached-bloom.Po
+
+#memcached-murmurhash2.o: bloom.c
+#		$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-murmurhash2.o -MD -MP -MF $(DEPDIR)/memcached-murmurhash2.Tpo -c -o memcached-murmurhash2.o `test -f 'MurmurHash2.c' || echo '$(srcdir)/'`MurmurHash2.c
+#		$(AM_V_at)$(am__mv) $(DEPDIR)/memcached-murmurhash2.Tpo $(DEPDIR)/memcached-murmurhash2.Po
 
 memcached-memcached.o: memcached.c
 	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-memcached.o -MD -MP -MF $(DEPDIR)/memcached-memcached.Tpo -c -o memcached-memcached.o `test -f 'memcached.c' || echo '$(srcdir)/'`memcached.c
@@ -1339,6 +1405,14 @@ memcached_debug-cache.obj: cache.c
 #	$(AM_V_CC)source='cache.c' object='memcached_debug-cache.obj' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
 #	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -c -o memcached_debug-cache.obj `if test -f 'cache.c'; then $(CYGPATH_W) 'cache.c'; else $(CYGPATH_W) '$(srcdir)/cache.c'; fi`
+
+#memcached_debug-bloom.o: bloom.c
+#	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-bloom.o -MD -MP -MF $(DEPDIR)/memcached-bloom.Tpo -c -o memcached-bloom.o `test -f 'bloom.c' || echo '$(srcdir)/'`bloom.c
+#	$(AM_V_at)$(am__mv) $(DEPDIR)/memcached-bloom.Tpo $(DEPDIR)/memcached-bloom.Po
+
+#memcached_debug-murmurhash2.o: bloom.c
+#		$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(memcached_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT memcached-murmurhash2.o -MD -MP -MF $(DEPDIR)/memcached-murmurhash2.Tpo -c -o memcached-murmurhash2.o `test -f 'MurmurHash2.c' || echo '$(srcdir)/'`MurmurHash2.c
+#		$(AM_V_at)$(am__mv) $(DEPDIR)/memcached-murmurhash2.Tpo $(DEPDIR)/memcached-murmurhash2.Po
 
 memcached_debug-solaris_priv.o: solaris_priv.c
 	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcached_debug_CFLAGS) $(CFLAGS) -MT memcached_debug-solaris_priv.o -MD -MP -MF $(DEPDIR)/memcached_debug-solaris_priv.Tpo -c -o memcached_debug-solaris_priv.o `test -f 'solaris_priv.c' || echo '$(srcdir)/'`solaris_priv.c

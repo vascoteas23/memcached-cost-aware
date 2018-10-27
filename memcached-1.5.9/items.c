@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <poll.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <bloom.h>
 
 /* Forward Declarations */
 static void item_link_q(item *it);
@@ -356,6 +358,34 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		unsigned int hdr_id = 0;
 		if (id == 0)
 			return 0;
+		if (settings.load == true && settings.slab_automove == 3) {
+			fprintf(stderr,"automove entry");
+				increment_evic();
+//				if (settings.slab_automove == 3) {
+					//				void * hv_p = &hv;
+					fprintf(stderr, "FOGO %d", bloom_check(return_bloom1(), key, nkey));
+					if (bloom_check(return_bloom1(), key, nkey)
+							&& bloom_check(return_bloom2(), key, nkey)) {
+						fprintf(stderr,"misszt");
+						increment_misses(id);
+					} else {
+						bloom_add(return_bloom1(), key, nkey);
+					}
+
+					if (return_evic() > 10000) {
+						fprintf(stderr,"pointz");
+						reset_evic();
+						reset_blooms();
+					}
+
+					if(return_misses()%50 == 0 && return_misses() != 0){
+						fprintf(stderr,"FOCA %d",return_misses());
+						reset_evic();
+						slabs_reassign(return_src_min_miss(),return_max_miss());
+					}
+
+//				}
+			}
 		priority = return_it_priority(id, cost, nbytes);
 		/* This is a large item. Allocate a header object now, lazily allocate
 		 *  chunks while reading the upload.
@@ -1184,6 +1214,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		}
 
 		if (it != NULL) {
+			if(settings.slab_automove == 3){
+				increment_hits(ITEM_clsid(it));
+			}
 			was_found = 1;
 			if (item_is_flushed(it)) {
 				do_item_unlink(it, hv);
@@ -1363,10 +1396,24 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					int found = 0;
 //					void *cold_hold_lock = NULL;
 					fprintf(stderr,"ZLSYYY: %d", orig_id);
-					if(tails[((orig_id | COLD_LRU))]){
-						fprintf(stderr, "COLDBUJA\n");
+					if(sizes[(orig_id | COLD_LRU)] <= 0){
+						if(sizes[(orig_id | WARM_LRU)] <= 0){
+							if(sizes[orig_id] <=0){
+								if(sizes[(orig_id | HOT_LRU_L)] <=0){
+									assert(sizes[(orig_id | HOT_LRU_L)] <=0);
+								}else{
+									fprintf(stderr, "hot_lru_l size %d\n",sizes[(orig_id | HOT_LRU_L)]);
+									cold_id |= HOT_LRU_L;
+								}
+							}
+						}else{
+							fprintf(stderr, "warm size %d\n",sizes[(orig_id | HOT_LRU_L)]);
+							cold_id |= WARM_LRU;
+						}
+				}else{
+					fprintf(stderr, "cold size %d\n",sizes[(orig_id | HOT_LRU_L)]);
 					cold_id |= COLD_LRU;
-					}
+				}
 //					else if(tails[(cold_id | WARM_LRU)]){
 //						fprintf(stderr, "WARMBUJA\n");
 //						cold_id |= WARM_LRU;
@@ -1377,9 +1424,11 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					assert(cold_id < LARGEST_ID);
 //				LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);STORAGE_delete(ext_storage, search);
 //				do_item_unlink_nolock(search, hv);
-					pthread_mutex_lock(&lru_locks[orig_id | COLD_LRU]);
-					cold_search = tails[orig_id | COLD_LRU];
-
+					pthread_mutex_lock(&lru_locks[orig_id]);
+					cold_search = tails[cold_id];
+					if(cold_search){
+						fprintf(stderr,"EXISTE O OBJECTO");
+					}
 					fprintf(stderr, "TEST, cold_id: %d, size_of_cold %d , realS: %llu\n", cold_id, sizes[orig_id+ HOT_LRU_L | COLD_LRU], itemstats[id].moves_to_cold);
 					if(cold_search != NULL){
 //					for (; cold_tries > 0 && cold_search != NULL;
@@ -1392,7 +1441,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 								&& cold_search->it_flags == 1) {
 							/* We are a crawler, ignore it. */
 							if (flags & LRU_PULL_CRAWL_BLOCKS) {
-								pthread_mutex_unlock(&lru_locks[orig_id | COLD_LRU]);
+								pthread_mutex_unlock(&lru_locks[orig_id]);
 								return 0;
 							}
 							tries++;
@@ -1402,16 +1451,16 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 							/* Don't think we need a counter for this. It'll OOM.  */
 							break;
 						}
-						itemstats[orig_id | COLD_LRU].evicted++;
-						itemstats[orig_id | COLD_LRU].evicted_time = current_time
+						itemstats[cold_id].evicted++;
+						itemstats[cold_id].evicted_time = current_time
 								- search->time;
 						if (cold_search->exptime != 0)
-							itemstats[orig_id | COLD_LRU].evicted_nonzero++;
+							itemstats[cold_id].evicted_nonzero++;
 						if ((cold_search->it_flags & ITEM_FETCHED) == 0) {
-							itemstats[orig_id | COLD_LRU].evicted_unfetched++;
+							itemstats[cold_id].evicted_unfetched++;
 						}
 						if ((cold_search->it_flags & ITEM_ACTIVE)) {
-							itemstats[orig_id | COLD_LRU].evicted_active++;
+							itemstats[cold_id].evicted_active++;
 						}
 						LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION,
 								cold_search);STORAGE_delete(ext_storage, cold_search);
@@ -1425,17 +1474,9 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						if (settings.slab_automove == 2) {
 						slabs_reassign(-1, orig_id);
 					}
-//						cold_search = cold_next_it;
-//						break;
 					}
-//					pthread_mutex_unlock(&lru_locks[cold_id]);
-//					if(lru_pull_tail(orig_id, COLD_LRU, total_bytes, LRU_PULL_EVICT, 0,
-//					NULL) <= 0){
-////						lru_pull_tail(orig_id, H, total_bytes, LRU_PULL_EVICT, 0,
-////											NULL) <= 0){
-//					}else{
-//					assert(cold_search != NULL);
-					assert(id >=HOT_SIZE);
+
+					assert(sizes[cold_id] >0);
 					if(sizes[id] >= HOT_SIZE && found > 0){
 					itemstats[id].moves_to_warm++;
 					move_to_lru = WARM_LRU; // move to WARM
@@ -1446,7 +1487,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					fprintf(stderr, "idM: %d", it->slabs_clsid);
 					minimum_priority_slclass(id, it->priority);
 					}
-					pthread_mutex_unlock(&lru_locks[orig_id | COLD_LRU]);
+					pthread_mutex_unlock(&lru_locks[orig_id]);
 					break;
 					}
 
@@ -1539,17 +1580,10 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		}
 
 		pthread_mutex_unlock(&lru_locks[id]);
-//		fprintf(stderr,"count %d", removed);
 		if (it != NULL) {
 			if (move_to_lru) {
-//				if(flags & LRU_PULL_CRAWL_BLOCKS){
-//				fprintf(stderr,"CRAWLING idC: %d\n",it->slabs_clsid);
-//				}
-//				fprintf(stderr,"idJ: %d\n",it->slabs_clsid );
 				it->slabs_clsid = ITEM_clsid(it);
-//				fprintf(stderr,"idP: %d\n",it->slabs_clsid );
 				it->slabs_clsid |= move_to_lru;
-//				fprintf(stderr,"moveTo: %d && id: %d\n", move_to_lru,it->slabs_clsid );
 				item_link_q(it);
 			}
 			if ((flags & LRU_PULL_RETURN_ITEM) == 0) {
@@ -1866,6 +1900,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		int x;
 #endif
 		int i;
+//		short miss_counter = 0;
 		useconds_t to_sleep = MIN_LRU_MAINTAINER_SLEEP;
 		useconds_t last_sleep = MIN_LRU_MAINTAINER_SLEEP;
 		rel_time_t last_crawler_check = 0;
@@ -1989,6 +2024,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					to_sleep = 1000;
 				}
 			}
+
 		}
 		pthread_mutex_unlock(&lru_maintainer_lock);
 		sam->free(am);

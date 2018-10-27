@@ -21,6 +21,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <pthread.h>
+#include <bloom.h>
 
 //#define DEBUG_SLAB_MOVER
 /* powers-of-N allocation structures */
@@ -37,6 +38,10 @@ typedef struct {
 	void **slab_list; /* array of slab pointers */
 	unsigned int list_size; /* size of prev array */
 
+	unsigned int hits;
+
+	unsigned int miss;
+
 	size_t requested; /* The number of requested bytes */
 
 	double inflation; /* inflation value for priority of items in slabclasses */
@@ -46,6 +51,10 @@ typedef struct {
 	double minpriority; /* minimum priority of the evicted item */
 } slabclass_t;
 
+#define INT_MAX    2147483647
+struct bloom bloom1;
+struct bloom bloom2;
+int evictions;
 static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
 static size_t mem_limit = 0;
 static size_t mem_malloced = 0;
@@ -93,6 +102,41 @@ void slabs_set_storage(void *arg) {
  * Given object size, return id to use when allocating/freeing memory for object
  * 0 means error: can't store such a large object
  */
+
+void increment_evic(void){
+	evictions++;
+}
+
+int return_evic(void){
+	return evictions;
+}
+
+void reset_evic(void){
+	evictions = 0;
+}
+
+struct bloom * return_bloom1(void){
+	return &bloom1;
+}
+
+struct bloom * return_bloom2(void){
+	return &bloom2;
+}
+
+//bool check_in_blooms(){
+//	if(bloom_check(return_bloom1, key, nkey) && bloom_check(return_bloom2, key, nkey)){
+//
+//	}
+//}
+
+void reset_blooms(void){
+	struct bloom tmp;
+	bloom_free(&bloom2);
+	bloom_init(&bloom2, 4500, 0.01);
+	tmp = bloom2;
+	bloom2 = bloom1;
+	bloom1 = tmp;
+}
 
 unsigned int slabs_clsid(const size_t size) {
 	int res = POWER_SMALLEST;
@@ -164,7 +208,9 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc,
 		const uint32_t *slab_sizes) {
 	int i = POWER_SMALLEST - 1;
 	unsigned int size = sizeof(item) + settings.chunk_size;
-
+//	1000000
+	bloom_init(&bloom1, 4500, 0.01);
+	bloom_init(&bloom2, 4500, 0.01);
 	/* Some platforms use runtime transparent hugepages. If for any reason
 	 * the initial allocation fails, the required settings do not persist
 	 * for remaining allocations. As such it makes little sense to do slab
@@ -504,6 +550,76 @@ void fill_slab_stats_automove(slab_stats_automove *am) {
 	pthread_mutex_unlock(&slabs_lock);
 }
 
+void increment_hits(int id){
+	slabclass_t *s_cls;
+	s_cls = &slabclass[id];
+
+	s_cls->hits++;
+}
+
+void increment_misses(int id){
+	slabclass_t *s_cls;
+	s_cls = &slabclass[id];
+
+	s_cls->miss++;
+}
+
+int return_misses(void){
+	slabclass_t *s_cls;
+	int cur = POWER_SMALLEST - 1;
+	int misses = 0;
+		int tries = power_largest - POWER_SMALLEST + 1;
+		for (; tries > 0; tries--) {
+			cur++;
+			s_cls = &slabclass[cur];
+			misses += s_cls->miss;
+		}
+	return misses;
+}
+
+int return_src_min_miss(void) {
+	int min = INT_MAX;
+	int tmp;
+	int id = -1;
+	slabclass_t *s_cls;
+	int cur = POWER_SMALLEST - 1;
+	int tries = power_largest - POWER_SMALLEST + 1;
+	for (; tries > 0; tries--) {
+		cur++;
+		s_cls = &slabclass[cur];
+		if (s_cls->slabs == 0 || s_cls->hits == 0)
+			continue;
+		tmp = s_cls->miss / ((s_cls->hits + s_cls->miss) * s_cls->slabs);
+		if (tmp < min) {
+			min = tmp;
+			id = cur;
+		}
+	}
+	return id;
+}
+
+int return_max_miss(void) {
+	unsigned int max = 0;
+	int tmp;
+	int id = -1;
+	slabclass_t *s_cls;
+	int cur = POWER_SMALLEST - 1;
+	int tries = power_largest - POWER_SMALLEST + 1;
+	for (; tries > 0; tries--) {
+		cur++;
+		s_cls = &slabclass[cur];
+		if (s_cls->miss == 0)
+			continue;
+		tmp = s_cls->miss;
+		if (tmp > max) {
+			max = tmp;
+			id = cur;
+		}
+	}
+	return id;
+}
+
+
 /* TODO: slabs_available_chunks should grow up to encompass this.
  * mem_flag is redundant with the other function.
  */
@@ -813,16 +929,16 @@ static int slab_rebalance_start(void) {
 
 double return_it_priority(int id, int cost, int size){
 
-//	return ((float) (slabclass[id].inflation)
-//			+ ((float) cost / (float) size));
-		return ((float) (slabclass[id].inflation) + (float) cost);
+	return ((float) (slabclass[id].inflation)
+			+ ((float) cost / (float) size));
+//		return ((float) (slabclass[id].inflation) + (float) cost);
 }
 
 void it_new_priority(item *it, int cost, int size, int id) {
 
-//	it->priority = ((float) (slabclass[id].inflation)
-//			+ ((float) cost / (float) size));
-	it->priority = ((float) (slabclass[id].inflation) + ((float) cost));
+	it->priority = ((float) (slabclass[id].inflation)
+			+ ((float) cost / (float) size));
+//	it->priority = ((float) (slabclass[id].inflation) + ((float) cost));
 	fprintf(stderr,"priority: %f,id %d, inflation: %f, size of data: %d",it->priority,id, slabclass[id].inflation, it->nbytes);
 
 }
@@ -1368,6 +1484,7 @@ static enum reassign_result_type do_slabs_reassign(int src, int dst) {
 }
 
 enum reassign_result_type slabs_reassign(int src, int dst) {
+	fprintf(stderr,"AUTOMOVE, src: %d, dst %d", src,dst);
 	enum reassign_result_type ret;
 	if (pthread_mutex_trylock(&slabs_rebalance_lock) != 0) {
 		return REASSIGN_RUNNING;

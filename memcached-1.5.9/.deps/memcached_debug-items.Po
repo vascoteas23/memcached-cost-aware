@@ -108,7 +108,7 @@ memcached_debug-items.o: items.c memcached.h config.h \
   /usr/include/sys/_types/_ct_rune_t.h /usr/include/sys/_types/_rune_t.h \
   /usr/include/signal.h /usr/include/string.h /usr/include/strings.h \
   /usr/include/secure/_strings.h /usr/include/secure/_string.h \
-  /usr/include/poll.h /usr/include/sys/poll.h
+  /usr/include/poll.h /usr/include/sys/poll.h bloom.h
 
 memcached.h:
 
@@ -499,3 +499,5 @@ slab_automove.h:
 /usr/include/poll.h:
 
 /usr/include/sys/poll.h:
+
+bloom.h:

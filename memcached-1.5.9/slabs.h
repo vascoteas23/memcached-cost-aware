@@ -16,6 +16,27 @@ void slabs_prefill_global(void);
 /** Function to give a priority to new items **/
 void it_new_priority(item *it, int cost, int size, int id);
 
+void increment_hits(int id);
+
+void increment_misses(int id);
+
+void increment_evic(void);
+
+int return_evic(void);
+
+void reset_evic(void);
+
+void reset_blooms(void);
+
+int return_src_min_miss(void);
+
+int return_misses(void);
+
+int return_max_miss(void);
+
+struct bloom * return_bloom1(void);
+struct bloom * return_bloom2(void);
+
 /** Function to update a priority to items in LRU **/
 void it_update_priority(item *it);
 

@@ -1,0 +1,3 @@
+memcached-murmurhash2.o: MurmurHash2.c murmurhash2.h
+
+murmurhash2.h:

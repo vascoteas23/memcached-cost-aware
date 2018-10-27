@@ -108,7 +108,7 @@ memcached-slabs.o: slabs.c memcached.h config.h \
   /usr/include/sys/_types/_ct_rune_t.h /usr/include/sys/_types/_rune_t.h \
   /usr/include/string.h /usr/include/strings.h \
   /usr/include/secure/_strings.h /usr/include/secure/_string.h \
-  /usr/include/signal.h
+  /usr/include/signal.h bloom.h
 
 memcached.h:
 
@@ -495,3 +495,5 @@ util.h:
 /usr/include/secure/_string.h:
 
 /usr/include/signal.h:
+
+bloom.h:

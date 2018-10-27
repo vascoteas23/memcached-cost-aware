@@ -4914,7 +4914,10 @@ static void process_command(conn *c, char *command) {
         }
     } else if (ntokens > 1 && strcmp(tokens[COMMAND_TOKEN].value, "watch") == 0) {
         process_watch_command(c, tokens, ntokens);
-    } else if ((ntokens == 3 || ntokens == 4) && (strcmp(tokens[COMMAND_TOKEN].value, "cache_memlimit") == 0)) {
+    }
+    else if (ntokens >= 1 && strcmp(tokens[COMMAND_TOKEN].value, "load") == 0) {
+    	settings.load = true;
+    }else if ((ntokens == 3 || ntokens == 4) && (strcmp(tokens[COMMAND_TOKEN].value, "cache_memlimit") == 0)) {
         process_memlimit_command(c, tokens, ntokens);
     } else if ((ntokens == 3 || ntokens == 4) && (strcmp(tokens[COMMAND_TOKEN].value, "verbosity") == 0)) {
         process_verbosity_command(c, tokens, ntokens);
@@ -7050,7 +7053,8 @@ int main (int argc, char **argv) {
                     break;
                 }
                 settings.slab_automove = atoi(subopts_value);
-                if (settings.slab_automove < 0 || settings.slab_automove > 2) {
+                fprintf(stderr,"auto %d ",settings.slab_automove);
+                if (settings.slab_automove < 0 || settings.slab_automove > 3) {
                     fprintf(stderr, "slab_automove must be between 0 and 2\n");
                     return 1;
                 }
@@ -7498,7 +7502,7 @@ int main (int argc, char **argv) {
     /*if (settings.slab_chunk_size_max == 16384 && settings.factor == 1.25) {
         settings.factor = 1.08;
     }*/
-
+    settings.load = false;
     if (slab_sizes_unparsed != NULL) {
         if (_parse_slab_sizes(slab_sizes_unparsed, slab_sizes)) {
             use_slab_sizes = true;
