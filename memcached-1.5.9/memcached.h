@@ -472,7 +472,8 @@ typedef struct _stritem {
     rel_time_t      time;       /* least recent access */
     rel_time_t      exptime;    /* expire time */
     int             nbytes;     /* size of data */
-    float priority;
+    unsigned short  priority;
+    unsigned short  cost;
     unsigned short  refcount;
     uint8_t         nsuffix;    /* length of flags-and-length string */
     uint8_t         it_flags;   /* ITEM_* above */
@@ -738,7 +739,7 @@ void accept_new_conns(const bool do_accept);
 conn *conn_from_freelist(void);
 bool  conn_add_to_freelist(conn *c);
 void  conn_close_idle(conn *c);
-item *item_alloc(char *key, size_t nkey,int cost, int flags, rel_time_t exptime, int nbytes);
+item *item_alloc(char *key, size_t nkey,short cost, int flags, rel_time_t exptime, int nbytes);
 #define DO_UPDATE true
 #define DONT_UPDATE false
 item *item_get(const char *key, const size_t nkey, conn *c, const bool do_update);

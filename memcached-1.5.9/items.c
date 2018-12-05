@@ -68,10 +68,18 @@ static uint64_t stats_sizes_cas_min = 0;
 static int stats_sizes_buckets = 0;
 
 static volatile int do_run_lru_maintainer_thread = 0;
+static volatile int do_run_slope_thread = 0;
+static volatile int do_run_search_thread = 0;
 static int lru_maintainer_initialized = 0;
+static int slope_initialized = 0;
+static int search_initialized = 0;
+static pthread_mutex_t slope_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t search_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t lru_maintainer_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t cas_id_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t stats_sizes_lock = PTHREAD_MUTEX_INITIALIZER;
+int *hitratearray;
+int globalhitratecounter = 0;
 
 void item_stats_reset(void) {
 	int i;
@@ -233,7 +241,7 @@ item *do_item_alloc_pull(const size_t ntotal, const unsigned int id) {
 }
 
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
-		const float priority, const int flag) {
+		const unsigned short priority, const int flag, char *key, const size_t nkey) {
 	item *it = NULL;
 	int i;
 	/* If no memory is available, attempt a direct LRU juggle/eviction */
@@ -254,35 +262,66 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			total_bytes -= temp_lru_size(id);
 
 		if (it == NULL) {
-			fprintf(stderr,"flag : %d, id : %d, priority: %f, min: %f \n", flag, id, priority,return_minimum_priority_slclass(id | HOT_LRU_L));
+			//fprintf(stderr,"flag : %d, id : %d, priority: %d, min: %d \n", flag, id, priority,return_minimum_priority_slclass(id | HOT_LRU_L));
 			//checks if the item has bigger priority than the minimum of the HOT_LRU_R and if the HOT_LRU_R is full
 			if (priority > return_minimum_priority_slclass(id | HOT_LRU_L)) {
-				fprintf(stderr,"lkZkT, priority: %f, min: %f id: %d sizeH: %d\n", priority,return_minimum_priority_slclass(id | HOT_LRU_L), (id | HOT_LRU_L), sizes[id | HOT_LRU_L]);
+				//fprintf(stderr,"lkZkT, priority: %d, min: %d id: %d sizeH: %d\n", priority,return_minimum_priority_slclass(id | HOT_LRU_L), (id | HOT_LRU_L), sizes[id | HOT_LRU_L]);
 				if (lru_pull_tail(id, HOT_LRU_L, total_bytes, LRU_PULL_EVICT, 0,
 				NULL) <= 0) {
-					fprintf(stderr,"POTS id: %d\n", id);
+				//	fprintf(stderr,"POTS id: %d\n", id);
 					if (settings.lru_segmented) {
-						fprintf(stderr,"PITS id: %d\n",id);
+						//fprintf(stderr,"PITS id: %d\n",id);
 						lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0, NULL);
 					} else {
 						break;
 					}
+				}else{
+
+					if(do_run_search_thread == 0 && settings.slab_automove == 3){
+					    if(start_search_thread(NULL) != 0){
+					    	fprintf(stderr, "Failed to enable search thread\n");
+					    }
+					}
 				}
 //				else{
+//					if (settings.slab_automove == 3
+//							&& bloom_check(return_bloom1(), key, nkey)
+//							&& bloom_check(return_bloom2(), key, nkey)) {
+//						fprintf(stderr, "WORKING BABY");
+//						slabs_reassign(return_min_cost_per_byte(),
+//								return_max_cost_per_byte());
+//					}
+//				}
+////				else{
 //					fprintf(stderr,"POTIS3");
 //					break;
 //				}
 			}else {
-				fprintf(stderr,"afinal é aqui");
+				//fprintf(stderr,"afinal é aqui");
 				if (lru_pull_tail(id, COLD_LRU, total_bytes, LRU_PULL_EVICT,0,NULL) <= 0) {
-					fprintf(stderr,"afinal é WARM");
+					//fprintf(stderr,"afinal é WARM");
 						if (settings.lru_segmented) {
 							lru_pull_tail(id, HOT_LRU_R, total_bytes, 0, 0,
 							NULL);
 						} else {
 							break;
 						}
+					}else{
+						if(do_run_search_thread == 0 && settings.slab_automove == 3){
+						    if(start_search_thread(NULL) != 0){
+						    	fprintf(stderr, "Failed to enable search thread\n");
+						    }
+						}
 					}
+//				else{
+//					if (settings.slab_automove == 3
+//							&& bloom_check(return_bloom1(), key, nkey)
+//							&& bloom_check(return_bloom2(), key, nkey)) {
+//						fprintf(stderr, "WORKING BABY");
+//						slabs_reassign(return_min_cost_per_byte(),
+//								return_max_cost_per_byte());
+//					}
+//					}
 //				else{
 //						fprintf(stderr,"POTIS");
 //						break;
@@ -290,7 +329,6 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 
 			}
 		} else{
-//			fprintf(stderr,"POTIS2");
 			break;
 		}
 	}
@@ -336,13 +374,13 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		return nch;
 	}
 
-	item *do_item_alloc(char *key, const size_t nkey, const unsigned int cost,
+	item *do_item_alloc(char *key, const size_t nkey, const unsigned short cost,
 			const unsigned int flags, const rel_time_t exptime,
 			const int nbytes) {
 		uint8_t nsuffix;
 		item *it = NULL;
 		char suffix[40];
-		float priority;
+		unsigned short priority;
 //	bool memfull = false;
 		// Avoid potential underflows.
 		if (nbytes < 2)
@@ -358,33 +396,45 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		unsigned int hdr_id = 0;
 		if (id == 0)
 			return 0;
-		if (settings.load == true && settings.slab_automove == 3) {
+		if (do_run_search_thread == 1 && settings.slab_automove == 3) {
 			fprintf(stderr,"automove entry");
-				increment_evic();
+//				increment_evic();
 //				if (settings.slab_automove == 3) {
 					//				void * hv_p = &hv;
-					fprintf(stderr, "FOGO %d", bloom_check(return_bloom1(), key, nkey));
-					if (bloom_check(return_bloom1(), key, nkey)
-							&& bloom_check(return_bloom2(), key, nkey)) {
-						fprintf(stderr,"misszt");
+					//fprintf(stderr, "FOGO %d", bloom_check(return_bloom1(), key, nkey));
+//					if (bloom_check(return_bloom1(), key, nkey)
+//							&& bloom_check(return_bloom2(), key, nkey)) {
+//						fprintf(stderr,"misszt");
+					pthread_mutex_lock(&lru_locks[id]);
 						increment_misses(id);
-					} else {
-						bloom_add(return_bloom1(), key, nkey);
-					}
+						increment_total_misses();
+					pthread_mutex_unlock(&lru_locks[id]);
+//					} else {
+//						bloom_add(return_bloom1(), key, nkey);
+//					}
 
-					if (return_evic() > 10000) {
-						fprintf(stderr,"pointz");
-						reset_evic();
-						reset_blooms();
-					}
-
-					if(return_misses()%50 == 0 && return_misses() != 0){
-						fprintf(stderr,"FOCA %d",return_misses());
-						reset_evic();
-						slabs_reassign(return_src_min_miss(),return_max_miss());
-					}
-
-//				}
+//					if (return_evic() > 10000) {
+//						fprintf(stderr,"pointz");
+//						reset_evic();
+//						reset_blooms();
+//					}
+//					fprintf(stderr,"misses %d",return_misses());
+//
+//					pthread_mutex_lock(&lru_locks[id]);
+//					if(return_total_misses()%50 == 0 && return_total_misses() != 0){
+//						fprintf(stderr,"FOCA %d",return_misses());
+//						//reset_evic();
+//						reset_total_misses();
+//						slabs_reassign(return_src_min_miss(),return_max_miss());
+//					}
+//					pthread_mutex_unlock(&lru_locks[id]);
+//
+////				}
+//		if (return_misses() % 50 == 0 && return_misses() != 0) {
+//			fprintf(stderr, "WORKING BABY");
+//			slabs_reassign(return_min_cost_per_byte(),
+//					return_max_cost_per_byte());
+//		}
 			}
 		priority = return_it_priority(id, cost, nbytes);
 		/* This is a large item. Allocate a header object now, lazily allocate
@@ -400,12 +450,12 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				htotal += sizeof(uint64_t);
 			}
 			hdr_id = slabs_clsid(htotal);
-			it = do_item_alloc_pull_priority(htotal, hdr_id, priority, nbytes);
+			it = do_item_alloc_pull_priority(htotal, hdr_id, priority, nbytes, key, nkey);
 			/* setting ITEM_CHUNKED is fine here because we aren't LINKED yet. */
 			if (it != NULL)
 				it->it_flags |= ITEM_CHUNKED;
 		} else {
-			it = do_item_alloc_pull_priority(ntotal, id, priority, nbytes);
+			it = do_item_alloc_pull_priority(ntotal, id, priority, nbytes, key, nkey);
 		}
 
 		if (it == NULL) {
@@ -429,13 +479,13 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	if (settings.temp_lru && exptime - current_time <= settings.temporary_ttl) {
 		id |= TEMP_LRU;
 	} else if (settings.lru_segmented
-			&& (it->priority > return_minimum_priority_slclass(id | HOT_LRU_L))) {
+			&& (priority > return_minimum_priority_slclass(id | HOT_LRU_L))) {
 //		fprintf(stderr, "LAYER1 \n");
 		if (return_minimum_priority_slclass(id | HOT_LRU_L) == 0) {
 //			fprintf(stderr, "LAYER2 \n");
 			if (sizes[id | HOT_LRU_L] < HOT_SIZE) {
 				assert(
-						sizes[id | HOT_LRU_L] < HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+						sizes[id | HOT_LRU_L] < HOT_SIZE && priority > return_minimum_priority_slclass(id | HOT_LRU_L));
 //				fprintf(stderr, "LAYER3 \n");
 				id |= HOT_LRU_L; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 //				fprintf(stderr,
@@ -445,7 +495,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			} else {
 //				fprintf(stderr, "LAYER4 \n");
 				assert(
-						sizes[id | HOT_LRU_L] >= HOT_SIZE && it->priority > return_minimum_priority_slclass(id | HOT_LRU_L));
+						sizes[id | HOT_LRU_L] >= HOT_SIZE && priority > return_minimum_priority_slclass(id | HOT_LRU_L));
 				id |= HOT_LRU_R; //TODO change HOT_LRU_H for HOT_LRU_L in all places as its values
 //				fprintf(stderr,
 //						"iam here, size: %d, id: %d, priority: %f, mimpriority: %f\n",
@@ -471,7 +521,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		}
 
 	} else if (settings.lru_segmented
-			&& (it->priority < return_minimum_priority_slclass(id | HOT_LRU_L))) {
+			&& (priority < return_minimum_priority_slclass(id | HOT_LRU_L))) {
 
 		id |= HOT_LRU_R;
 //		fprintf(stderr, "here: %d, size: %d, mimpriority: %f\n", id, sizes[id],
@@ -481,16 +531,12 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			id |= COLD_LRU;
 		}
 		it->slabs_clsid = id;
-
+		it->cost = cost;
 		DEBUG_REFCNT(it, '*');
 		it->it_flags |= settings.use_cas ? ITEM_CAS : 0;
 		it->nkey = nkey;
 		it->nbytes = nbytes;
-//	if (memfull) {
-//
-//	} else {
-//
-//	}
+
 		memcpy(ITEM_key(it), key, nkey);
 		it->exptime = exptime;
 		if (settings.inline_ascii_response) {
@@ -567,6 +613,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		if (*tail == 0)
 			*tail = it;
 		sizes[it->slabs_clsid]++;
+		increment_avgcostbyte(ITEM_clsid(it),it->cost);
 #ifdef EXTSTORE
 		if (it->it_flags & ITEM_HDR) {
 			sizes_bytes[it->slabs_clsid] += (ITEM_ntotal(it) - it->nbytes) + sizeof(item_hdr);
@@ -614,6 +661,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		if (it->prev)
 			it->prev->next = it->next;
 		sizes[it->slabs_clsid]--;
+		decrement_avgcostbyte(ITEM_clsid(it), it->cost);
 		#ifdef EXTSTORE
 		if (it->it_flags & ITEM_HDR) {
 			sizes_bytes[it->slabs_clsid] -= (ITEM_ntotal(it) - it->nbytes) + sizeof(item_hdr);
@@ -723,25 +771,26 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 //				if(it->slabs_clsid > HOT_LRU_L && it->slabs_clsid<WARM_LRU)
 //					ori_id = it->slabs_clsid - HOT_LRU_L;
 				//falta testar
-				fprintf(stderr,"entrei: %f, id: %d, id_class: %d",it->priority,it->slabs_clsid, ori_id);
-				if((it->priority > return_minimum_priority_slclass(ori_id)) && (it->slabs_clsid < HOT_LRU_L && it->slabs_clsid > WARM_LRU)){
-					fprintf(stderr, "UPDn\n");
-					fprintf(stderr, "ITEM_clsid(it): %d\n",ori_id);
+				unsigned short priority = it->priority;
+				//fprintf(stderr,"entrei: %d, id: %d, id_class: %d",priority,it->slabs_clsid, ori_id);
+				if((priority > return_minimum_priority_slclass(ori_id)) && (it->slabs_clsid < HOT_LRU_L && it->slabs_clsid > WARM_LRU)){
+					//fprintf(stderr, "UPDn\n");
+					//fprintf(stderr, "ITEM_clsid(it): %d\n",ori_id);
 					item *tail;
 					do_item_unlink_q(it);
 					it->slabs_clsid = ori_id;
-					fprintf(stderr, "it_id: %d\n",it->slabs_clsid);
+					//fprintf(stderr, "it_id: %d\n",it->slabs_clsid);
 					tail = tails[(it->slabs_clsid | HOT_LRU_L)];
 					if(tail == NULL)
-						fprintf(stderr,"NULL, size %d, id %d, orig_id%d", sizes[(it->slabs_clsid | HOT_LRU_L)],(it->slabs_clsid | HOT_LRU_L), ori_id);
-					fprintf(stderr, "tail_id: %d\n",ori_id | HOT_LRU_L);
+					//	fprintf(stderr,"NULL, size %d, id %d, orig_id%d", sizes[(it->slabs_clsid | HOT_LRU_L)],(it->slabs_clsid | HOT_LRU_L), ori_id);
+					//fprintf(stderr, "tail_id: %d\n",ori_id | HOT_LRU_L);
 					item_unlink_q(tail);
 					(tail)->slabs_clsid = ori_id;
-					fprintf(stderr, "tailNew_id: %d\n",ori_id);
+					//fprintf(stderr, "tailNew_id: %d\n",ori_id);
 					it->slabs_clsid |= HOT_LRU_L;
 					(tail)->slabs_clsid |= COLD_LRU;
-					fprintf(stderr, "itNew_id: %d\n",ori_id);
-					fprintf(stderr, "tailNewNEW_id: %d\n",ori_id | COLD_LRU);
+					//fprintf(stderr, "itNew_id: %d\n",ori_id);
+					//fprintf(stderr, "tailNewNEW_id: %d\n",ori_id | COLD_LRU);
 					item_link_q_warm(tail);
 					item_link_q(it);
 				}else{
@@ -749,23 +798,23 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				if (ITEM_lruid(it) == COLD_LRU
 						&& (it->it_flags & ITEM_ACTIVE)) {
 					it->time = current_time;
-					fprintf(stderr, "before && %d , after %d\n",
-							it->slabs_clsid, ITEM_clsid(it));
+					//fprintf(stderr, "before && %d , after %d\n",
+						//	it->slabs_clsid, ITEM_clsid(it));
 					item_unlink_q(it);
 					it->slabs_clsid = ITEM_clsid(it);
 					it->slabs_clsid |= WARM_LRU;
 					it->it_flags &= ~ITEM_ACTIVE;
-					fprintf(stderr, "warm && %d \n", it->slabs_clsid);
+					//fprintf(stderr, "warm && %d \n", it->slabs_clsid);
 					item_link_q_warm(it);
 				} else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
 					it->time = current_time;
-					fprintf(stderr, "aqui 1");
+					//fprintf(stderr, "aqui 1");
 				}
 			}
 		}
 		} else if (it->time < current_time - ITEM_UPDATE_INTERVAL) {
 			assert((it->it_flags & ITEM_SLABBED) == 0);
-			fprintf(stderr, "aqui 2");
+			//fprintf(stderr, "aqui 2");
 			if ((it->it_flags & ITEM_LINKED) != 0) {
 				it->time = current_time;
 				item_unlink_q(it);
@@ -1257,7 +1306,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 							} else {
 								it->it_flags |= ITEM_ACTIVE;
 								if (ITEM_lruid(it) != COLD_LRU) {
-									fprintf(stderr, "WALA3");
+									//fprintf(stderr, "WALA3");
 									do_item_update(it); // bump LA time
 								} else if (!lru_bump_async(
 										c->thread->lru_bump_buf, it, hv)) {
@@ -1385,8 +1434,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 			switch (cur_lru) {
 			case HOT_LRU_L:
 //				limit = total_bytes * settings.hot_lru_pct_l / 100;
-				fprintf(stderr,"AQUI34\n");
-				fprintf(stderr,"sizez: %d, id: %d, new size: %d", sizes[orig_id | COLD_LRU], orig_id, (orig_id | COLD_LRU));
+				//fprintf(stderr,"AQUI34\n");
+				//fprintf(stderr,"sizez: %d, id: %d, new size: %d", sizes[orig_id | COLD_LRU], orig_id, (orig_id | COLD_LRU));
 				it = search; /* No matter what, we're stopping */
 				if (flags & LRU_PULL_EVICT) {
 					int cold_id = orig_id;
@@ -1395,23 +1444,23 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					item *cold_next_it;
 					int found = 0;
 //					void *cold_hold_lock = NULL;
-					fprintf(stderr,"ZLSYYY: %d", orig_id);
+					//fprintf(stderr,"ZLSYYY: %d", orig_id);
 					if(sizes[(orig_id | COLD_LRU)] <= 0){
 						if(sizes[(orig_id | WARM_LRU)] <= 0){
 							if(sizes[orig_id] <=0){
 								if(sizes[(orig_id | HOT_LRU_L)] <=0){
 									assert(sizes[(orig_id | HOT_LRU_L)] <=0);
 								}else{
-									fprintf(stderr, "hot_lru_l size %d\n",sizes[(orig_id | HOT_LRU_L)]);
+								//	fprintf(stderr, "hot_lru_l size %d\n",sizes[(orig_id | HOT_LRU_L)]);
 									cold_id |= HOT_LRU_L;
 								}
 							}
 						}else{
-							fprintf(stderr, "warm size %d\n",sizes[(orig_id | HOT_LRU_L)]);
+						//	fprintf(stderr, "warm size %d\n",sizes[(orig_id | HOT_LRU_L)]);
 							cold_id |= WARM_LRU;
 						}
 				}else{
-					fprintf(stderr, "cold size %d\n",sizes[(orig_id | HOT_LRU_L)]);
+				//	fprintf(stderr, "cold size %d\n",sizes[(orig_id | HOT_LRU_L)]);
 					cold_id |= COLD_LRU;
 				}
 //					else if(tails[(cold_id | WARM_LRU)]){
@@ -1426,10 +1475,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 //				do_item_unlink_nolock(search, hv);
 					pthread_mutex_lock(&lru_locks[orig_id]);
 					cold_search = tails[cold_id];
-					if(cold_search){
-						fprintf(stderr,"EXISTE O OBJECTO");
-					}
-					fprintf(stderr, "TEST, cold_id: %d, size_of_cold %d , realS: %llu\n", cold_id, sizes[orig_id+ HOT_LRU_L | COLD_LRU], itemstats[id].moves_to_cold);
+				//	fprintf(stderr, "TEST, cold_id: %d, size_of_cold %d , realS: %llu\n", cold_id, sizes[orig_id+ HOT_LRU_L | COLD_LRU], itemstats[id].moves_to_cold);
 					if(cold_search != NULL){
 //					for (; cold_tries > 0 && cold_search != NULL;
 //							cold_tries--, cold_search = cold_next_it) {
@@ -1467,7 +1513,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 
 						uint32_t hv = hash(ITEM_key(cold_search), cold_search->nkey);
 						fprintf(stderr, "TEST2");
-						sl_new_inflation(orig_id,cold_search->priority);
+						sl_new_inflation(orig_id,convert_precision(it->priority));
 						do_item_unlink_nolock(cold_search, hv);
 						removed++;
 						fprintf(stderr, "TEST3");
@@ -1485,7 +1531,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 					search->slabs_clsid = orig_id;
 					it = search;
 					fprintf(stderr, "idM: %d", it->slabs_clsid);
-					minimum_priority_slclass(id, it->priority);
+					minimum_priority_slclass(id, return_it_priority(orig_id,cold_search->cost, cold_search->nbytes));
 					}
 					pthread_mutex_unlock(&lru_locks[orig_id]);
 					break;
@@ -1517,7 +1563,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				} else if (sizes_bytes[id] > limit
 						|| current_time - search->time > max_age) {
 					itemstats[id].moves_to_cold++;
-					fprintf(stderr,"sizeT : %d, id: %d, idz: %d\n", sizes[orig_id], search->slabs_clsid,id);
+					//fprintf(stderr,"sizeT : %d, id: %d, idz: %d\n", sizes[orig_id], search->slabs_clsid,id);
 					move_to_lru = COLD_LRU;
 					do_item_unlink_q(search);
 					it = search;
@@ -1549,15 +1595,18 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 						itemstats[id].evicted_active++;
 					}
 					LOGGER_LOG(NULL, LOG_EVICTIONS, LOGGER_EVICTION, search);STORAGE_delete(ext_storage, search);
-					sl_new_inflation(orig_id,it->priority);
+					sl_new_inflation(orig_id,convert_precision(it->priority));
 					do_item_unlink_nolock(search, hv);
-					fprintf(stderr,"idX %d",it->slabs_clsid);
+					//fprintf(stderr,"idX %d",it->slabs_clsid);
 //                    assert(false);
 //				minimum_priority_slclass(it->slabs_clsid, it->priority); /** tells the slabclass that the priority of evicted item is the minimum**/
 					removed++;
 					if (settings.slab_automove == 2) {
 						slabs_reassign(-1, orig_id);
 					}
+//					if (settings.slab_automove == 3) {
+//					slabs_reassign(return_min_cost_per_byte(), return_max_cost_per_byte());
+//					}
 				} else if (flags & LRU_PULL_RETURN_ITEM) {
 					/* Keep a reference to this item and return it. */
 					ret_it->it = it;
@@ -1887,6 +1936,8 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 	};
 #endif
 	static pthread_t lru_maintainer_tid;
+	static pthread_t slope_tid;
+	static pthread_t search_tid;
 
 #define MAX_LRU_MAINTAINER_SLEEP 1000000
 #define MIN_LRU_MAINTAINER_SLEEP 1000
@@ -2012,6 +2063,7 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 				int src, dst;
 				sam->run(am, &src, &dst);
 				if (src != -1 && dst != -1) {
+					fprintf(stderr,"POIS...");
 					slabs_reassign(src, dst);
 					LOGGER_LOG(l, LOG_SYSEVENTS, LOGGER_SLAB_MOVE, NULL, src,
 							dst);
@@ -2035,6 +2087,97 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 
 		return NULL;
 	}
+
+	static void *slope_thread(void *arg) {
+		pthread_mutex_lock(&slope_lock);
+		while (do_run_slope_thread) {
+			pthread_mutex_unlock(&slope_lock);
+			int globalhitrate = 0;
+			int counter = 0;
+			if(mem_limit_memcache() == 0){
+				continue;
+			}
+			for (int i = POWER_SMALLEST; i < MAX_NUMBER_OF_SLAB_CLASSES; i++) {
+				int hitrate = scls_hitrate(i);
+				if(hitrate == 0)
+					continue;
+				counter++;
+				globalhitrate += hitrate;
+				fprintf(stderr,"Slab class %d hitrate: %d",i, hitrate);
+			}
+			if(counter == 0)
+				continue;
+			fprintf(stderr,"counter %d, content %d",globalhitratecounter,hitratearray[globalhitratecounter]);
+//			if(do_reset == 5){
+//				fprintf(stderr,"reseting to 0, curr %d", do_reset);
+//				do_reset = 0;
+//			}else if(do_reset != 0){
+//				fprintf(stderr,"reseting incr, curr %d", do_reset);
+//				do_reset++;
+//			}
+			hitratearray[globalhitratecounter] = (globalhitrate/counter);
+			globalhitratecounter++;
+			if(globalhitratecounter == 199)
+				reset_hitratearray();
+			sleep(1);
+		}
+		pthread_mutex_unlock(&slope_lock);
+		return NULL;
+	}
+
+	static void *search_thread(void *arg) {
+		fprintf(stderr,"IM DOING IT");
+		pthread_mutex_lock(&search_lock);
+		int *pointer1 = hitratearray;
+		int *pointer2 = hitratearray;
+		int *tmp = pointer1+1;
+		while (do_run_search_thread) {
+			pthread_mutex_unlock(&search_lock);
+			if(&*pointer2 == &hitratearray[199]){
+				fprintf(stderr,"reseting2");
+				pointer1 = hitratearray;
+				pointer2 = pointer1+4;
+				tmp = pointer1+1;
+			}else{
+				pointer2 = pointer1+4;
+				//tmp = pointer1+1;
+			}
+			for(;tmp != pointer2;pointer1++){
+				fprintf(stderr,"mem_limit %d", mem_limit_memcache());
+				if(*pointer1<*tmp && mem_limit_memcache()){
+//					LOGGER_LOG(NULL, LOG_MISSES, LOGGER_GET_MISSES, it);
+					fprintf(stderr,"rebalance plox");
+					slabs_reassign(return_min_cost_per_byte(),return_max_cost_per_byte()); // trocar o src com o dst
+					reset_hitratearray();
+					pointer1 = hitratearray;
+					pointer2 = pointer1 + 4;
+					tmp = pointer1 + 1;
+					break;
+				}
+				tmp++;
+			}
+//			}
+
+			sleep(1);
+		}
+		pthread_mutex_unlock(&search_lock);
+		return NULL;
+	}
+
+	void reset_hitratearray(void){
+		pthread_mutex_lock(&slope_lock);
+		fprintf(stderr,"RESETING");
+//		for (int i = POWER_SMALLEST; i < MAX_NUMBER_OF_SLAB_CLASSES; i++) {
+//			reset_misses(i);
+//
+//		}
+//		int * point = &globalhitratecounter;
+//		*point = 0;
+		globalhitratecounter = 0;
+		pthread_mutex_unlock(&slope_lock);
+	}
+
+
 
 	int stop_lru_maintainer_thread(void) {
 		int ret;
@@ -2085,6 +2228,74 @@ item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
 		}
 		return 0;
 	}
+
+	int start_slope_thread(void *arg) {
+			int ret;
+
+			pthread_mutex_lock(&slope_lock);
+			do_run_slope_thread = 1;
+			if (((ret = pthread_create(&slope_tid, NULL,
+					slope_thread, arg)) != 0)) {
+				fprintf(stderr, "Can't create slope thread: %s\n",
+						strerror(ret));
+				pthread_mutex_unlock(&slope_lock);
+				return -1;
+			}
+			pthread_mutex_unlock(&slope_lock);
+
+			return 0;
+		}
+
+	void slope_pause(void) {
+			pthread_mutex_lock(&slope_lock);
+	}
+
+	void slope_resume(void) {
+			pthread_mutex_unlock(&slope_lock);
+	}
+
+	int init_slope(void) {
+		if (slope_initialized == 0 && settings.slab_automove == 3) {
+			fprintf(stderr,"enter1");
+			pthread_mutex_init(&slope_lock, NULL);
+			slope_initialized = 1;
+			hitratearray =  malloc(sizeof(int) * 200);
+		}
+		return 0;
+	}
+
+	void search_pause(void) {
+		pthread_mutex_lock(&search_lock);
+	}
+
+	void search_resume(void) {
+		pthread_mutex_unlock(&search_lock);
+	}
+
+	int init_search(void) {
+		if (search_initialized == 0 && settings.slab_automove == 3) {
+			fprintf(stderr,"enter2");
+			pthread_mutex_init(&search_lock, NULL);
+			search_initialized = 1;
+		}
+		return 0;
+	}
+
+	int start_search_thread(void *arg) {
+				int ret;
+				pthread_mutex_lock(&search_lock);
+				do_run_search_thread = 1;
+				if ((ret = pthread_create(&search_tid, NULL,
+						search_thread, arg)) != 0) {
+					fprintf(stderr, "Can't create search thread: %s\n",
+							strerror(ret));
+					pthread_mutex_unlock(&search_lock);
+					return -1;
+				}
+				pthread_mutex_unlock(&search_lock);
+
+				return 0;
+			}
 
 	/* Tail linkers and crawler for the LRU crawler. */
 	void do_item_linktail_q(item *it) { /* item is the new tail */

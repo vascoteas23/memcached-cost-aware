@@ -42,19 +42,21 @@ typedef struct {
 
 	unsigned int miss;
 
+	float costperbyte;
+
 	size_t requested; /* The number of requested bytes */
 
-	double inflation; /* inflation value for priority of items in slabclasses */
+	float inflation; /* inflation value for priority of items in slabclasses */
 
-	int isfull; /* 1 if full 0 still has memory; */
-
-	double minpriority; /* minimum priority of the evicted item */
+	float minpriority; /* minimum priority of the evicted item */
 } slabclass_t;
 
+#define PRECISION  10
 #define INT_MAX    2147483647
 struct bloom bloom1;
 struct bloom bloom2;
 int evictions;
+int totalmisses;
 static slabclass_t slabclass[MAX_NUMBER_OF_SLAB_CLASSES];
 static size_t mem_limit = 0;
 static size_t mem_malloced = 0;
@@ -391,7 +393,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id,
 	slabclass_t *p;
 	void *ret = NULL;
 	item *it = NULL;
-	fprintf(stderr, "idlk: %d", id);
+	//fprintf(stderr, "idlk: %d", id);
 	if (id < POWER_SMALLEST || id > power_largest) {
 		MEMCACHED_SLABS_ALLOCATE_FAILED(size, 0);
 		return NULL;
@@ -496,7 +498,7 @@ static void do_slabs_free_chunked(item *it, const size_t size) {
 static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
 	slabclass_t *p;
 	item *it;
-	fprintf(stderr,"idT: %d, power_larges: %d", id,power_largest);
+	//fprintf(stderr,"idT: %d, power_larges: %d", id,power_largest);
 	assert(id >= POWER_SMALLEST && id <= power_largest);
 	if (id < POWER_SMALLEST || id > power_largest)
 		return;
@@ -560,8 +562,20 @@ void increment_hits(int id){
 void increment_misses(int id){
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
-
+	//fprintf(stderr,"LKZT %d miss %u", id,s_cls->miss);
 	s_cls->miss++;
+}
+
+void increment_total_misses(void){
+	totalmisses++;
+}
+
+void reset_total_misses(void){
+	totalmisses = 0;
+}
+
+int return_total_misses(void){
+	return totalmisses;
 }
 
 int return_misses(void){
@@ -576,6 +590,62 @@ int return_misses(void){
 		}
 	return misses;
 }
+
+bool mem_limit_memcache(void){
+	return mem_limit_reached;
+}
+
+void reset_misses(int id){
+	slabclass_t *s_cls;
+	s_cls = &slabclass[id];
+	s_cls->miss = 0;
+	s_cls->hits = 0;
+}
+
+
+int return_min_cost_per_byte(void){
+	int min = INT_MAX;
+	int tmp;
+	int id = -1;
+	slabclass_t *s_cls;
+	int cur = POWER_SMALLEST - 1;
+	int tries = power_largest - POWER_SMALLEST + 1;
+	for (; tries > 0; tries--) {
+		cur++;
+		s_cls = &slabclass[cur];
+		if (s_cls->slabs == 0 || s_cls->hits == 0)
+			continue;
+		tmp = ((s_cls->miss * s_cls->costperbyte) / (s_cls->hits + s_cls->miss));
+		if (tmp < min) {
+			min = tmp;
+			id = cur;
+		}
+	}
+	return id;
+}
+
+int return_max_cost_per_byte(void){
+	unsigned int max = 0;
+	int tmp;
+	int id = -1;
+	slabclass_t *s_cls;
+	int cur = POWER_SMALLEST - 1;
+	int tries = power_largest - POWER_SMALLEST + 1;
+	for (; tries > 0; tries--) {
+		cur++;
+		s_cls = &slabclass[cur];
+		if (s_cls->miss == 0)
+			continue;
+		tmp = ((s_cls->miss * s_cls->costperbyte) / (s_cls->hits + s_cls->miss));
+	//	fprintf(stderr,"tmp %u id %d miss %u costperbyte %f",tmp, cur, s_cls->miss, s_cls->costperbyte);
+		if (tmp > max) {
+			max = tmp;
+			id = cur;
+		}
+	}
+	return id;
+}
+
 
 int return_src_min_miss(void) {
 	int min = INT_MAX;
@@ -927,19 +997,29 @@ static int slab_rebalance_start(void) {
 	return 0;
 }
 
-double return_it_priority(int id, int cost, int size){
+unsigned short return_it_priority(int id, const unsigned short cost, int size){
 
-	return ((float) (slabclass[id].inflation)
-			+ ((float) cost / (float) size));
+//	float tmp = ((slabclass[id].inflation)
+//			+ ((float) cost / (float) size));
+
+	float tmp = ((slabclass[id].inflation)
+				+ ((float) cost));
+	assert(tmp * PRECISION > 63000);
+	//fprintf(stderr,"tmpz %f, priorityH %d",tmp, (unsigned short) (tmp * PRECISION));
+
+	return (unsigned short) (tmp * PRECISION);
 //		return ((float) (slabclass[id].inflation) + (float) cost);
 }
 
-void it_new_priority(item *it, int cost, int size, int id) {
+void it_new_priority(item *it, const unsigned short cost, int size, int id) {
+//	float tmp = ((slabclass[id].inflation)
+//			+ ((float) cost / (float) size));
+	float tmp = ((slabclass[id].inflation)
+				+ ((float) cost));
 
-	it->priority = ((float) (slabclass[id].inflation)
-			+ ((float) cost / (float) size));
+	it->priority = (unsigned short) (tmp * PRECISION);
 //	it->priority = ((float) (slabclass[id].inflation) + ((float) cost));
-	fprintf(stderr,"priority: %f,id %d, inflation: %f, size of data: %d",it->priority,id, slabclass[id].inflation, it->nbytes);
+	//fprintf(stderr,"priority: %d,id %d, inflation: %f, size of data: %d, tmp %f",it->priority,id, slabclass[id].inflation, it->nbytes, tmp);
 
 }
 
@@ -952,6 +1032,40 @@ void it_new_priority(item *it, int cost, int size, int id) {
 //			+ ((double) it->cost / (double) it->nbytes);
 //
 //}
+
+void increment_avgcostbyte(int id, unsigned short cost){
+	int tmp = 0;
+	if(id >=HOT_LRU_L && id <= WARM_LRU){
+		tmp = id - HOT_LRU_L;
+	}else{
+		tmp = id;
+	}
+	slabclass_t *s_cls;
+	s_cls = &slabclass[tmp];
+//	fprintf(stderr,"id %d, size %u cost %d div %f, fd %f", tmp, s_cls->size, cost, s_cls->costperbyte, (float)cost/(float)(s_cls->size));
+	s_cls->costperbyte+= ((float)cost/(float)(s_cls->size));
+}
+
+void decrement_avgcostbyte(int id, unsigned short cost){
+	int tmp = 0;
+		if(id >=HOT_LRU_L && id <= WARM_LRU){
+			tmp = id - HOT_LRU_L;
+		}else{
+			tmp = id;
+		}
+	slabclass_t *s_cls;
+	s_cls = &slabclass[tmp];
+//	fprintf(stderr,"id %d, size %u", tmp, s_cls->size);
+	s_cls->costperbyte-= ((float)cost/(float)s_cls->size);
+}
+
+int scls_hitrate(const int id){
+	slabclass_t *s_cls;
+	s_cls = &slabclass[id];
+	if(s_cls->hits == 0 || s_cls->miss == 0)
+		return 0;
+	return ((s_cls->hits/s_cls->miss) * s_cls->costperbyte);
+}
 
 void minimum_priority_slclass(int id, float priority) {
 	slabclass_t *s_cls;
@@ -974,22 +1088,21 @@ void sl_new_inflation(int id,float inf){
 
 	if (s_cls->inflation < inf) {
 		s_cls->inflation = inf;
-		fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
+	//	fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
 		return;
 	}
-	fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
+//	fprintf(stderr, "id: %d, inf: %f, infz: %f", id, inf, s_cls->inflation);
 }
 
-double return_minimum_priority_slclass(int id) {
+unsigned short return_minimum_priority_slclass(int id) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
-	return s_cls->minpriority;
+	return (unsigned short) (s_cls->minpriority*PRECISION);
 }
 
-int is_slc_full(int id){
-	slabclass_t *s_cls;
-	s_cls = &slabclass[id];
-	return s_cls->isfull;
+float convert_precision(unsigned short tmp){
+//	fprintf(stderr,"inflgh %f priority %d, priorityf %f",((float)tmp/PRECISION), tmp, (float)tmp);
+	return ((float)tmp/PRECISION);
 }
 
 /* CALLED WITH slabs_lock HELD */

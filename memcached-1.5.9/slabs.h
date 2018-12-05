@@ -14,7 +14,13 @@ void slabs_init(const size_t limit, const double factor, const bool prealloc, co
 void slabs_prefill_global(void);
 
 /** Function to give a priority to new items **/
-void it_new_priority(item *it, int cost, int size, int id);
+void it_new_priority(item *it, const unsigned short cost, int size, int id);
+
+int scls_hitrate(const int id);
+
+bool mem_limit_memcache(void);
+
+void reset_misses(int id);
 
 void increment_hits(int id);
 
@@ -28,9 +34,21 @@ void reset_evic(void);
 
 void reset_blooms(void);
 
+void reset_total_misses(void);
+
+int return_total_misses(void);
+
+void increment_total_misses(void);
+
+int return_total_misses(void);
+
 int return_src_min_miss(void);
 
 int return_misses(void);
+
+int return_min_cost_per_byte(void);
+
+int return_max_cost_per_byte(void);
 
 int return_max_miss(void);
 
@@ -46,11 +64,16 @@ void minimum_priority_slclass(int id, float priority);
 /**function to update priority**/
 void sl_new_inflation(int id,float inf);
 
-int is_slc_full(int id);
+void increment_avgcostbyte(int id, unsigned short cost);
+
+void decrement_avgcostbyte(int id, unsigned short cost);
 
 /** function that return the minimum value of a certain slabclass **/
-double return_minimum_priority_slclass(int id);
-double return_it_priority(int id, int cost, int size);
+unsigned short return_minimum_priority_slclass(int id);
+
+unsigned short return_it_priority(int id, const unsigned short cost, int size);
+
+float convert_precision(unsigned short tmp);
 /**
  * Given object size, return id to use when allocating/freeing memory for object
  * 0 means error: can't store such a large object

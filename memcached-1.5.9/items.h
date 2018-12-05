@@ -3,7 +3,7 @@
 #define WARM_LRU 64
 #define COLD_LRU 128
 #define TEMP_LRU 192
-#define HOT_SIZE 1000000
+#define HOT_SIZE 300000
 
 #define CLEAR_LRU(id) (id & ~(3<<6))
 #define GET_LRU(id) (id & (3<<6))
@@ -12,11 +12,11 @@
 uint64_t get_cas_id(void);
 
 /*@null@*/
-item *do_item_alloc(char *key, const size_t nkey, const unsigned int cost, const unsigned int flags, const rel_time_t exptime, const int nbytes);
+item *do_item_alloc(char *key, const size_t nkey, const unsigned short cost, const unsigned int flags, const rel_time_t exptime, const int nbytes);
 item_chunk *do_item_alloc_chunk(item_chunk *ch, const size_t bytes_remain);
 item *do_item_alloc_pull(const size_t ntotal, const unsigned int id);
 item *do_item_alloc_pull_priority(const size_t ntotal, const unsigned int id,
-		const float priority, const int flag);
+		const unsigned short priority, const int flag, char *key, const size_t nkey);
 void item_free(item *it);
 bool item_size_ok(const size_t nkey, const int flags, const int nbytes);
 
@@ -83,6 +83,15 @@ int stop_lru_maintainer_thread(void);
 int init_lru_maintainer(void);
 void lru_maintainer_pause(void);
 void lru_maintainer_resume(void);
+int init_slope(void);
+int start_slope_thread(void *arg);
+void slope_pause(void);
+void slope_resume(void);
+void reset_hitratearray(void);
+int init_search(void);
+void search_resume(void);
+void search_pause(void);
+int start_search_thread(void *arg) ;
 
 void *lru_bump_buf_create(void);
 

@@ -2897,14 +2897,14 @@ enum store_item_type do_store_item(item *it, int comm, conn *c, const uint32_t h
 
         if (stored == NOT_STORED && failed_alloc == 0) {
             if (old_it != NULL) {
-            	fprintf(stderr,"REPLACE I WAS RIGHT \n");
+            	//fprintf(stderr,"REPLACE I WAS RIGHT \n");
             	//replace I think - vasco
 //            	it_update_priority(it);
                 STORAGE_delete(c->thread->storage, old_it);
-                fprintf(stderr,"old_id: %d, new_id: %d \n",old_it->slabs_clsid,it->slabs_clsid);
+               // fprintf(stderr,"old_id: %d, new_id: %d \n",old_it->slabs_clsid,it->slabs_clsid);
                 item_replace(old_it, it, hv);
             } else {
-            	fprintf(stderr,"INSERT and %d \n", comm);
+            	//fprintf(stderr,"INSERT and %d \n", comm);
             	//insert for the first time - vasco
 //            	it_new_priority(it);
                 do_item_link(it, hv);
@@ -3849,7 +3849,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
             if (it) {
-            	LOGGER_LOG(NULL, LOG_MISSES, LOGGER_GET_MISSES, it);
+//            	LOGGER_LOG(NULL, LOG_MISSES, LOGGER_GET_MISSES, it);
                 if (_ascii_get_expand_ilist(c, i) != 0) {
                     item_remove(it);
                     goto stop;
@@ -4020,7 +4020,8 @@ stop:
 static void process_update_command(conn *c, token_t *tokens, const size_t ntokens, int comm, bool handle_cas) {
     char *key;
     size_t nkey;
-    unsigned int cost;
+    unsigned int tmpcost;
+    unsigned short cost;
     unsigned int flags;
     int32_t exptime_int = 0;
     time_t exptime;
@@ -4039,7 +4040,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
 
     key = tokens[KEY_TOKEN].value;
     nkey = tokens[KEY_TOKEN].length;
-    if (! (safe_strtoul(tokens[2].value, (uint32_t *)&cost)
+    if (! (safe_strtoul(tokens[2].value, (uint32_t *)&tmpcost)
     	   &&(safe_strtoul(tokens[3].value, (uint32_t *)&flags)
            && safe_strtol(tokens[4].value, &exptime_int)
            && safe_strtol(tokens[5].value, (int32_t *)&vlen)))) {
@@ -4048,7 +4049,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     }
     /* Ubuntu 8.04 breaks when I pass exptime to safe_strtol */
     exptime = exptime_int;
-
+    cost = (short)tmpcost;
     /* Negative exptimes can underflow and end up immortal. realtime() will
        immediately expire values that are greater than REALTIME_MAXDELTA, but less
        than process_started, so lets aim for that. */
@@ -7728,6 +7729,13 @@ int main (int argc, char **argv) {
 #endif
         fprintf(stderr, "Failed to enable LRU maintainer thread\n");
         return 1;
+    }
+    init_slope();
+    init_search();
+    fprintf(stderr,"%d t", settings.slab_automove);
+    if(start_slope_thread(NULL) != 0){
+    	fprintf(stderr, "Failed to enable slope thread\n");
+    	return 1;
     }
 
     if (settings.slab_reassign &&
