@@ -73,6 +73,8 @@ unsigned short return_minimum_priority_slclass(int id);
 
 unsigned short return_it_priority(int id, const unsigned short cost, int size);
 
+int slcls_num_slabs(int id);
+
 float convert_precision(unsigned short tmp);
 /**
  * Given object size, return id to use when allocating/freeing memory for object

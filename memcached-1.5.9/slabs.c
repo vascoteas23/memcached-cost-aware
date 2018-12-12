@@ -44,6 +44,8 @@ typedef struct {
 
 	float costperbyte;
 
+	int counter;
+
 	size_t requested; /* The number of requested bytes */
 
 	float inflation; /* inflation value for priority of items in slabclasses */
@@ -1070,16 +1072,24 @@ int scls_hitrate(const int id){
 void minimum_priority_slclass(int id, float priority) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
+	s_cls->counter+=1;
 
-	if(s_cls->minpriority < priority){
-			s_cls->minpriority = priority;
-			return;
-	}
+//	if(s_cls->minpriority < priority){
+	s_cls->minpriority += (priority);
+	fprintf(stderr, "counter %d, priority %f",s_cls->counter,(s_cls->minpriority/(float)s_cls->counter));
+	return;
+//	}
 //	if(s_cls->minpriority == 0){
 //		s_cls->minpriority = priority;
 //		return;
 //	}
 
+}
+
+int slcls_num_slabs(int id){
+	slabclass_t *s_cls;
+	s_cls = &slabclass[id];
+	return s_cls->slabs;
 }
 
 void sl_new_inflation(int id,float inf){
@@ -1097,7 +1107,7 @@ void sl_new_inflation(int id,float inf){
 unsigned short return_minimum_priority_slclass(int id) {
 	slabclass_t *s_cls;
 	s_cls = &slabclass[id];
-	return (unsigned short) (s_cls->minpriority*PRECISION);
+	return (unsigned short) ((s_cls->minpriority*PRECISION/(float)s_cls->counter));
 }
 
 float convert_precision(unsigned short tmp){

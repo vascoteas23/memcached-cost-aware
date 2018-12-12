@@ -7732,11 +7732,16 @@ int main (int argc, char **argv) {
     }
     init_slope();
     init_search();
+    init_control();
     fprintf(stderr,"%d t", settings.slab_automove);
     if(start_slope_thread(NULL) != 0){
     	fprintf(stderr, "Failed to enable slope thread\n");
     	return 1;
     }
+    if(start_control_thread(NULL) != 0){
+        	fprintf(stderr, "Failed to enable control thread\n");
+        	return 1;
+        }
 
     if (settings.slab_reassign &&
         start_slab_maintenance_thread() == -1) {

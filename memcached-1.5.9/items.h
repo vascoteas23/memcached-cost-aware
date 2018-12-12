@@ -40,6 +40,7 @@ void *item_lru_bump_buf_create(void);
 #define LRU_PULL_EVICT 1
 #define LRU_PULL_CRAWL_BLOCKS 2
 #define LRU_PULL_RETURN_ITEM 4 /* fill info struct if available */
+#define LRU_PULL_RESERVED 8
 
 struct lru_pull_tail_return {
     item *it;
@@ -84,7 +85,9 @@ int init_lru_maintainer(void);
 void lru_maintainer_pause(void);
 void lru_maintainer_resume(void);
 int init_slope(void);
+int init_control(void);
 int start_slope_thread(void *arg);
+int start_control_thread(void *arg);
 void slope_pause(void);
 void slope_resume(void);
 void reset_hitratearray(void);
@@ -92,7 +95,7 @@ int init_search(void);
 void search_resume(void);
 void search_pause(void);
 int start_search_thread(void *arg) ;
-
+int cost_control(int orig_id);
 void *lru_bump_buf_create(void);
 
 #ifdef EXTSTORE
