@@ -433,7 +433,7 @@ AUTOMAKE = ${SHELL} /Users/v.coelho/Documents/memcached/memcached-1.5.9/missing 
 AWK = awk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -g -O2 -Wall -Werror -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
+CFLAGS = -g -O2 -Wall -pedantic -Wmissing-prototypes -Wmissing-declarations -Wredundant-decls
 CPP = gcc -E
 CPPFLAGS =
 CYGPATH_W = echo
